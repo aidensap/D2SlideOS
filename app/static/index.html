@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D2SlideOS</title>
+<style>
+  :root {
+    --bg:#0f172a; --bg2:#1e293b; --bg3:#263348; --border:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8;
+    --correct:#22c55e; --wrong:#ef4444; --warn:#f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
+
+  header {
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 1rem 2rem; display: flex; align-items: center; gap: 1rem;
+  }
+  header h1 { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+  header span { color: var(--muted); font-size: 0.85rem; }
+
+  main { max-width: 1000px; margin: 0 auto; padding: 2rem 1rem; display: grid; gap: 2rem; }
+
+  .card {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem;
+  }
+  .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1.2rem; color: var(--accent); }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
+  input, select {
+    width: 100%; padding: 0.6rem 0.8rem; background: var(--bg3);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    font-size: 0.9rem; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .full-width { grid-column: 1 / -1; }
+
+  .btn {
+    padding: 0.65rem 1.4rem; border: none; border-radius: 8px; font-size: 0.9rem;
+    font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: var(--accent); color: #0f172a; }
+  .btn-danger  { background: transparent; border: 1px solid var(--wrong); color: var(--wrong); }
+  .btn-run     { background: var(--correct); color: #0f172a; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { text-align: left; color: var(--muted); font-weight: 500; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
+  td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+
+  .badge {
+    display: inline-block; padding: 0.2rem 0.6rem; border-radius: 99px;
+    font-size: 0.75rem; font-weight: 600;
+  }
+  .badge-success { background: rgba(34,197,94,.15); color: var(--correct); }
+  .badge-running { background: rgba(56,189,248,.15); color: var(--accent); }
+  .badge-failed  { background: rgba(239,68,68,.15); color: var(--wrong); }
+
+  .empty { text-align: center; color: var(--muted); padding: 2rem; font-size: 0.9rem; }
+
+  .insights-preview {
+    max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--muted); font-size: 0.8rem;
+  }
+  .insights-full {
+    display: none; grid-column: 1 / -1; background: var(--bg3);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.2rem; margin-top: 0.5rem; font-size: 0.85rem;
+    color: var(--text); line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+  }
+  .btn-expand {
+    padding: .3rem .7rem; border-radius: 6px; font-size: .78rem; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--bg3);
+    color: var(--muted); white-space: nowrap; transition: all .15s;
+  }
+  .btn-expand:hover { border-color: var(--accent); color: var(--accent); }
+
+  .toast {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: 10px;
+    padding: .75rem 1.2rem; font-size: .88rem; opacity: 0;
+    transition: opacity .3s; pointer-events: none; z-index: 99;
+  }
+  .toast.show { opacity: 1; }
+  .toast.ok   { border-color: var(--correct); color: var(--correct); }
+  .toast.err  { border-color: var(--wrong); color: var(--wrong); }
+
+  .model-btn {
+    padding: .45rem 1rem; border-radius: 8px; font-size: .82rem; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--bg3);
+    color: var(--muted); transition: all .15s;
+  }
+  .model-btn:hover { border-color: var(--accent); color: var(--text); }
+  .model-btn.active { border-color: var(--accent); background: rgba(56,189,248,.12); color: var(--accent); }
+  .model-group { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+  .provider-label { font-size: .75rem; color: var(--muted); margin-right: .2rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>D2SlideOS</h1>
+  <span>自动提取报表 · AI 分析 · 生成 PPT</span>
+</header>
+
+<main>
+  <!-- 模型选择 -->
+  <div class="card">
+    <h2>AI 模型</h2>
+    <div class="model-group" id="modelBtns">加载中...</div>
+  </div>
+
+  <!-- 语言 -->
+  <div class="card">
+    <h2>图表语言</h2>
+    <div class="model-group">
+      <button id="langZh" class="model-btn" onclick="selectLang('zh', this)">中文</button>
+      <button id="langEn" class="model-btn" onclick="selectLang('en', this)">English</button>
+    </div>
+  </div>
+
+  <!-- 新建任务 -->
+  <div class="card">
+    <h2>新建报表任务</h2>
+    <div class="form-grid">
+      <div>
+        <label>任务名称</label>
+        <input id="jobName" type="text" placeholder="例：5月销售周报">
+      </div>
+      <div>
+        <label>数据源（报表）</label>
+        <select id="reportType"><option value="">加载中...</option></select>
+      </div>
+      <div class="full-width">
+        <label>收件人（逗号分隔邮箱）</label>
+        <input id="recipients" type="text" placeholder="a@sap.com, b@sap.com">
+      </div>
+      <div>
+        <label>调度（留空 = 仅手动触发）</label>
+        <input id="schedule" type="text" placeholder="例：0 9 * * 1  (每周一9点)">
+      </div>
+      <div style="display:flex;align-items:flex-end;">
+        <button class="btn btn-primary" onclick="createJob()">创建任务</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 任务列表 -->
+  <div class="card">
+    <h2>任务列表</h2>
+    <div id="jobsTable"><div class="empty">暂无任务</div></div>
+  </div>
+
+  <!-- 运行历史 -->
+  <div class="card">
+    <h2>运行历史</h2>
+    <div id="historyTable"><div class="empty">暂无记录</div></div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function toast(msg, type = "ok") {
+  const el = $("toast");
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+function formatDate(s) {
+  if (!s) return "—";
+  // UTC → 北京时间 +8
+  const d = new Date(s + "Z");
+  return d.toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" });
+}
+
+// 加载可用报表到下拉
+async function selectLang(lang, btn) {
+  await api("/api/config/lang", { method: "POST", body: JSON.stringify({ lang }) });
+  document.querySelectorAll("#langZh, #langEn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  toast(`Chart language: ${lang === "zh" ? "中文" : "English"}`);
+}
+
+async function loadLangConfig() {
+  const { current } = await api("/api/config/lang");
+  document.getElementById(current === "zh" ? "langZh" : "langEn").classList.add("active");
+}
+
+async function loadModelConfig() {
+  const { current, available } = await api("/api/config/model");
+  const el = $("modelBtns");
+  el.innerHTML = available.map(m => `
+    <button class="model-btn ${m.id === current ? 'active' : ''}"
+            onclick="selectModel('${m.id}', this)">
+      <span class="provider-label">${m.provider}</span>${m.label}
+    </button>`).join("");
+}
+
+async function selectModel(modelId, btn) {
+  await api("/api/config/model", { method: "POST", body: JSON.stringify({ model_id: modelId }) });
+  document.querySelectorAll(".model-btn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  toast(`已切换到 ${btn.textContent.trim()}`);
+}
+
+async function loadReportOptions() {
+  const reports = await api("/api/reports/available");
+  const sel = $("reportType");
+  sel.innerHTML = reports.map(r =>
+    `<option value="${r.id}">${r.filename}</option>`
+  ).join("");
+}
+
+// 渲染任务表格
+function renderJobs(jobs) {
+  const el = $("jobsTable");
+  if (!jobs.length) { el.innerHTML = '<div class="empty">暂无任务</div>'; return; }
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>名称</th><th>数据源</th><th>收件人</th><th>调度</th><th>操作</th>
+    </tr></thead>
+    <tbody>${jobs.map(j => `
+      <tr>
+        <td>${j.name}</td>
+        <td><code style="color:var(--accent);font-size:.8rem">${j.report_type}</code></td>
+        <td style="color:var(--muted);font-size:.82rem">${j.recipients}</td>
+        <td style="color:var(--muted);font-size:.82rem">${j.schedule || '手动'}</td>
+        <td style="display:flex;gap:.5rem">
+          <button class="btn btn-run" onclick="runJob(${j.id},this)">▶ 运行</button>
+          <button class="btn btn-danger" onclick="deleteJob(${j.id})">删除</button>
+        </td>
+      </tr>`).join("")}
+    </tbody></table>`;
+}
+
+// 渲染历史表格
+function renderHistory(runs) {
+  const el = $("historyTable");
+  if (!runs.length) { el.innerHTML = '<div class="empty">暂无记录</div>'; return; }
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>任务</th><th>状态</th><th>开始时间</th><th>AI 洞察预览</th><th>操作</th>
+    </tr></thead>
+    <tbody>${runs.map(r => {
+      const hasInsights = r.insights && r.status === 'success';
+      const safeInsights = hasInsights ? r.insights.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+      return `
+      <tr>
+        <td>${r.job_name}</td>
+        <td><span class="badge badge-${r.status}">${r.status}</span></td>
+        <td style="font-size:.82rem;color:var(--muted)">${formatDate(r.started_at)}</td>
+        <td>
+          <div style="display:flex;align-items:center;gap:.5rem">
+            <div class="insights-preview">${r.insights || (r.status === 'running' ? '生成中...' : '—')}</div>
+            ${hasInsights ? `<button class="btn-expand" onclick="toggleInsights(${r.id},this)">展开</button>` : ''}
+          </div>
+          <div class="insights-full" id="insights-${r.id}">${safeInsights}</div>
+        </td>
+        <td style="display:flex;gap:.4rem">
+          ${r.file_path
+            ? `<a href="/api/history/${r.id}/download" class="btn btn-primary" style="font-size:.8rem;padding:.4rem .9rem;text-decoration:none">下载 PPT</a>`
+            : ''}
+          <button class="btn btn-danger" style="font-size:.8rem;padding:.4rem .9rem" onclick="deleteRun(${r.id})">删除</button>
+        </td>
+      </tr>`;
+    }).join("")}
+    </tbody></table>`;
+}
+
+function toggleInsights(id, btn) {
+  const panel = $(`insights-${id}`);
+  const isOpen = panel.style.display === 'block';
+  panel.style.display = isOpen ? 'none' : 'block';
+  btn.textContent = isOpen ? '展开' : '收起';
+}
+
+async function createJob() {
+  const name = $("jobName").value.trim();
+  const report_type = $("reportType").value;
+  const recipients = $("recipients").value.trim();
+  const schedule = $("schedule").value.trim();
+  if (!name || !report_type) { toast("请填写任务名称和数据源", "err"); return; }
+  try {
+    await api("/api/jobs", { method: "POST", body: JSON.stringify({ name, report_type, recipients, schedule }) });
+    toast("任务创建成功");
+    $("jobName").value = "";
+    $("recipients").value = "";
+    $("schedule").value = "";
+    refresh();
+  } catch (e) { toast("创建失败: " + e.message, "err"); }
+}
+
+async function runJob(id, btn) {
+  btn.disabled = true;
+  btn.textContent = "运行中...";
+  try {
+    await api(`/api/jobs/${id}/run`, { method: "POST" });
+    await api(`/api/jobs/${id}`, { method: "DELETE" });
+    toast("已提交，正在生成报告...");
+    setTimeout(refresh, 2000);
+    setTimeout(refresh, 8000);
+  } catch (e) {
+    toast("运行失败: " + e.message, "err");
+    btn.disabled = false;
+    btn.textContent = "▶ 运行";
+  }
+}
+
+async function deleteRun(id) {
+  if (!confirm("确认删除此记录？")) return;
+  await api(`/api/history/${id}`, { method: "DELETE" });
+  toast("已删除");
+  refresh();
+}
+
+async function deleteJob(id) {
+  if (!confirm("确认删除此任务？")) return;
+  await api(`/api/jobs/${id}`, { method: "DELETE" });
+  toast("已删除");
+  refresh();
+}
+
+async function refresh() {
+  const [jobs, history] = await Promise.all([api("/api/jobs"), api("/api/history")]);
+  renderJobs(jobs);
+  renderHistory(history);
+}
+
+loadReportOptions();
+loadModelConfig();
+loadLangConfig();
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

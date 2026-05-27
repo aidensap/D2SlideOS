@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-pptx
+pandas
+apscheduler
+sqlalchemy
+python-dotenv
+matplotlib
+python-multipart
+sap-ai-sdk-gen[all]
