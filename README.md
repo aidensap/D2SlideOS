@@ -195,4 +195,4 @@ Drop any `.csv` file into `mock_data/` — it will appear automatically in the d
 
 ---
 
-*Built by Aiden · SAP Intern · Powered by SAP AI Core*
+*Built by Aiden Yang · SAP STAR Intern · Powered by SAP AI Core*
