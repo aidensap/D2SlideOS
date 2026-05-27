@@ -10,12 +10,12 @@ D2SlideOS is an AI-powered report agent that pulls data from SAP BW (or any CSV 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                        Browser UI                        │
+│                        Browser UI                       │
 │   Model selector · Language toggle · Job manager        │
 └────────────────────┬────────────────────────────────────┘
                      │ HTTP
 ┌────────────────────▼────────────────────────────────────┐
-│                  FastAPI Backend                         │
+│                  FastAPI Backend                        │
 │                                                         │
 │  /api/jobs  ──►  bw_connector.py  ──►  DataFrame        │
 │                                            │            │
