@@ -54,6 +54,29 @@ D2SlideOS is an AI-powered report agent that pulls data from SAP BW (or any CSV 
 
 ---
 
+## Database
+
+D2SlideOS uses **SQLite** by default — the entire database is a single local file (`aiden_ai.db`), zero configuration needed.
+
+| Table | Stores |
+|-------|--------|
+| `ReportJob` | Created jobs (name, data source, recipients, schedule) |
+| `RunHistory` | Every run (status, AI insights, PPT path, timestamps) |
+
+**Scaling to PostgreSQL:** SQLAlchemy abstracts the database layer, so switching only requires changing one line in `config.py`:
+
+```python
+# SQLite (default)
+DATABASE_URL = "sqlite:///./aiden_ai.db"
+
+# PostgreSQL (production)
+DATABASE_URL = "postgresql://user:password@host:5432/d2slideos"
+```
+
+No other code changes needed.
+
+---
+
 ## Project Structure
 
 ```
