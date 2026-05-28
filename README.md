@@ -2,7 +2,15 @@
 
 > **SAP BI Report → AI Analysis → PPT, fully automated.**
 
-D2SlideOS is an AI-powered report automation tool. It uses RPA (browser automation) to screenshot SAP Analytics Cloud story pages, sends the image to GPT-4o Vision for analysis, and automatically generates a PowerPoint deck — optionally emailed to recipients on a schedule.
+**Login once. Enter your report URL once. D2SlideOS does the rest.**
+
+D2SlideOS automatically captures your SAP Analytics Cloud stories on a schedule, runs **AI-powered analysis** on every chart, and delivers a **professional PowerPoint report straight to your manager's inbox** — no manual work, no repeated logins, no copy-pasting.
+
+- **One-time login** — authenticate once, and every future run uses your saved session automatically
+- **Any SAC story URL** — just paste the link; D2SlideOS handles the screenshot, the analysis, and the slides
+- **GPT-4o Vision** — understands charts, trends, and KPIs the same way a human analyst would
+- **Scheduled delivery** — set a cron schedule and your boss gets the report every Monday morning without you lifting a finger
+- **Multi-task** — manage multiple reports across different stories, each with its own schedule, language, and AI model
 
 ---
 
