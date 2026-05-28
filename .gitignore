@@ -6,3 +6,7 @@ __pycache__/
 output/
 *.db
 .DS_Store
+venv/
+rpa_session.json
+server.log
+output/

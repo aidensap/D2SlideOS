@@ -206,6 +206,41 @@ def _split_insights(insights):
     return chunks or [[]]
 
 
+def _add_screenshot_slide(prs, image_path, report_label, lang="en"):
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    slide.background.fill.solid()
+    slide.background.fill.fore_color.rgb = DARK_BG
+
+    tb = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.6))
+    p = tb.text_frame.paragraphs[0]
+    p.text = report_label
+    p.font.size = Pt(20)
+    p.font.bold = True
+    p.font.color.rgb = ACCENT
+
+    slide.shapes.add_picture(image_path, Inches(0.2), Inches(0.9), Inches(9.6), Inches(5.8))
+
+
+def generate_slides_from_screenshot(screenshot_path: str, report_label: str, insights: str, lang: str = "en") -> str:
+    prs = Presentation()
+    prs.slide_width = Inches(10)
+    prs.slide_height = Inches(7)
+
+    first_line = next((l for l in insights.split("\n") if l.strip()), "")
+    _add_title_slide(prs, report_label, first_line, lang)
+    _add_screenshot_slide(prs, screenshot_path, report_label, lang)
+
+    slide_title = "AI 数据洞察" if lang == "zh" else "AI Data Insights"
+    chunks = _split_insights(insights)
+    for i, chunk in enumerate(chunks, 1):
+        _add_insights_slide(prs, chunk, slide_title, page=i, total=len(chunks))
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = f"{OUTPUT_DIR}/report_{timestamp}.pptx"
+    prs.save(path)
+    return path
+
+
 def generate_slides(df, report_label, insights, lang="en"):
     prs = Presentation()
     prs.slide_width = Inches(10)

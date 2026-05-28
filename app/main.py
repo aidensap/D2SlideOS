@@ -4,24 +4,103 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from app.models import init_db, SessionLocal, ReportJob, RunHistory
 from app.tools.bw_connector import get_report, list_available_reports
-from app.agent import analyze_data
-from app.tools.slide_builder import generate_slides
+from app.tools.sac_connector import SACConnector
+from app.tools.screenshot_rpa import take_screenshot, has_session, login_interactive, clear_session
+from app.agent import analyze_data, analyze_screenshot
+from app.tools.slide_builder import generate_slides, generate_slides_from_screenshot
+from app.tools.distributor import send_report
 import app.config as cfg
 
 app = FastAPI(title="D2SlideOS")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
+_scheduler = AsyncIOScheduler()
+
+
+def _get_sac() -> SACConnector:
+    return SACConnector(
+        base_url=cfg.SAC_BASE_URL,
+        token_url=cfg.SAC_TOKEN_URL,
+        client_id=cfg.SAC_CLIENT_ID,
+        client_secret=cfg.SAC_CLIENT_SECRET,
+    )
+
 
 @app.on_event("startup")
 def startup():
     init_db()
+    _scheduler.start()
+    _reload_schedules()
+
+
+@app.on_event("shutdown")
+def shutdown():
+    _scheduler.shutdown(wait=False)
 
 
 @app.get("/")
 def index():
     return FileResponse("app/static/index.html")
+
+
+# ---------- SAC ----------
+
+@app.get("/api/sac/status")
+def sac_status():
+    if not cfg.SAC_CLIENT_ID or not cfg.SAC_CLIENT_SECRET:
+        return {"connected": False, "reason": "credentials_missing"}
+    try:
+        _get_sac().get_token()
+        return {"connected": True}
+    except Exception as e:
+        return {"connected": False, "reason": str(e)}
+
+@app.post("/api/sac/connect")
+def sac_connect():
+    if not cfg.SAC_CLIENT_ID or not cfg.SAC_CLIENT_SECRET:
+        raise HTTPException(status_code=400, detail="SAC credentials not configured in .env")
+    try:
+        _get_sac().get_token()
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@app.get("/api/sac/stories")
+def sac_stories():
+    if not cfg.SAC_CLIENT_ID:
+        raise HTTPException(status_code=401, detail="SAC credentials not configured")
+    try:
+        return _get_sac().list_stories()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ---------- RPA ----------
+
+@app.get("/api/rpa/session-status")
+def rpa_session_status():
+    return {"has_session": has_session()}
+
+@app.post("/api/rpa/login")
+async def rpa_login(body: dict):
+    url = body.get("url", "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(None, login_interactive, url)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/rpa/logout")
+def rpa_logout():
+    clear_session()
+    return {"ok": True}
 
 
 # ---------- Config ----------
@@ -74,8 +153,11 @@ def available_reports():
 class JobCreate(BaseModel):
     name: str
     report_type: str
-    recipients: str
+    recipients: str = ""
     schedule: str = ""
+    source: str = "screenshot"
+    lang: str = "zh"
+    model: str = "gpt-4o-mini"
 
 @app.get("/api/jobs")
 def list_jobs():
@@ -83,18 +165,40 @@ def list_jobs():
     jobs = db.query(ReportJob).filter(ReportJob.is_active == True).all()
     db.close()
     return [{"id": j.id, "name": j.name, "report_type": j.report_type,
+             "source": getattr(j, "source", "screenshot"),
              "recipients": j.recipients, "schedule": j.schedule,
+             "lang": getattr(j, "lang", "zh"), "model": getattr(j, "model", "gpt-4o-mini"),
              "created_at": j.created_at} for j in jobs]
 
 @app.post("/api/jobs")
 def create_job(body: JobCreate):
     db = SessionLocal()
-    job = ReportJob(**body.dict())
+    data = body.dict()
+    job = ReportJob(**{k: v for k, v in data.items() if hasattr(ReportJob, k)})
     db.add(job)
     db.commit()
     db.refresh(job)
+    job_id = job.id
+    job_name = job.name
+    schedule = job.schedule
+    snap = {"report_type": job.report_type, "name": job.name, "recipients": job.recipients,
+            "source": getattr(job, "source", "screenshot"),
+            "lang": getattr(job, "lang", "zh"), "model": getattr(job, "model", "gpt-4o-mini")}
     db.close()
-    return {"id": job.id, "name": job.name}
+
+    if schedule:
+        try:
+            _scheduler.add_job(
+                _run_scheduled_job,
+                CronTrigger.from_crontab(schedule),
+                id=f"job_{job_id}",
+                replace_existing=True,
+                args=[job_id, snap],
+            )
+        except Exception:
+            pass
+
+    return {"id": job_id, "name": job_name}
 
 @app.delete("/api/jobs/{job_id}")
 def delete_job(job_id: int):
@@ -105,6 +209,10 @@ def delete_job(job_id: int):
     job.is_active = False
     db.commit()
     db.close()
+    try:
+        _scheduler.remove_job(f"job_{job_id}")
+    except Exception:
+        pass
     return {"ok": True}
 
 
@@ -123,11 +231,29 @@ async def run_job(job_id: int):
     db.commit()
     db.refresh(run)
     run_id = run.id
-    job_snapshot = {"report_type": job.report_type, "name": job.name}
+    job_snapshot = {
+        "report_type": job.report_type,
+        "name": job.name,
+        "recipients": job.recipients,
+        "source": getattr(job, "source", "screenshot"),
+        "lang": getattr(job, "lang", "zh"),
+        "model": getattr(job, "model", "gpt-4o-mini"),
+    }
     db.close()
 
     asyncio.create_task(_execute_run(run_id, job_snapshot))
     return {"run_id": run_id, "status": "running"}
+
+
+async def _run_scheduled_job(job_id: int, job_snapshot: dict):
+    db = SessionLocal()
+    run = RunHistory(job_id=job_id, job_name=job_snapshot["name"])
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    run_id = run.id
+    db.close()
+    await _execute_run(run_id, job_snapshot)
 
 
 async def _execute_run(run_id: int, job: dict):
@@ -135,12 +261,35 @@ async def _execute_run(run_id: int, job: dict):
     run = db.query(RunHistory).filter(RunHistory.id == run_id).first()
     try:
         loop = asyncio.get_event_loop()
-        df = await loop.run_in_executor(None, get_report, job["report_type"])
-        insights = await loop.run_in_executor(None, analyze_data, df, cfg.CHART_LANG)
-        file_path = await loop.run_in_executor(None, generate_slides, df, job["name"], insights, cfg.CHART_LANG)
+        source = job.get("source", "screenshot")
+        lang = job.get("lang", "zh")
+        model = job.get("model", "gpt-4o-mini")
+        original_model = cfg.AI_MODEL
+        cfg.AI_MODEL = model
+        try:
+            if source == "screenshot":
+                screenshot_path = await loop.run_in_executor(None, take_screenshot, job["report_type"])
+                run.screenshot_path = screenshot_path
+                insights = await loop.run_in_executor(None, analyze_screenshot, screenshot_path, lang)
+                file_path = await loop.run_in_executor(
+                    None, generate_slides_from_screenshot, screenshot_path, job["name"], insights, lang
+                )
+            elif source == "sac":
+                sac = _get_sac()
+                df = await loop.run_in_executor(None, sac.export_story_data, job["report_type"])
+                insights = await loop.run_in_executor(None, analyze_data, df, lang)
+                file_path = await loop.run_in_executor(None, generate_slides, df, job["name"], insights, lang)
+            else:
+                df = await loop.run_in_executor(None, get_report, job["report_type"])
+                insights = await loop.run_in_executor(None, analyze_data, df, lang)
+                file_path = await loop.run_in_executor(None, generate_slides, df, job["name"], insights, lang)
+        finally:
+            cfg.AI_MODEL = original_model
         run.status = "success"
         run.insights = insights
         run.file_path = file_path
+        if job.get("recipients"):
+            await loop.run_in_executor(None, send_report, file_path, job["recipients"], job["name"], insights)
     except Exception as e:
         run.status = "failed"
         run.error = str(e)
@@ -148,6 +297,28 @@ async def _execute_run(run_id: int, job: dict):
         run.completed_at = datetime.utcnow()
         db.commit()
         db.close()
+
+
+def _reload_schedules():
+    db = SessionLocal()
+    jobs = db.query(ReportJob).filter(ReportJob.is_active == True, ReportJob.schedule != "").all()
+    for job in jobs:
+        try:
+            _scheduler.add_job(
+                _run_scheduled_job,
+                CronTrigger.from_crontab(job.schedule),
+                id=f"job_{job.id}",
+                replace_existing=True,
+                args=[job.id, {
+                    "report_type": job.report_type,
+                    "name": job.name,
+                    "recipients": job.recipients,
+                    "source": getattr(job, "source", "csv"),
+                }],
+            )
+        except Exception:
+            pass
+    db.close()
 
 
 # ---------- History ----------
@@ -159,7 +330,8 @@ def get_history():
     db.close()
     return [{"id": r.id, "job_name": r.job_name, "status": r.status,
              "started_at": r.started_at, "completed_at": r.completed_at,
-             "insights": r.insights, "file_path": r.file_path} for r in runs]
+             "insights": r.insights, "file_path": r.file_path,
+             "has_screenshot": bool(getattr(r, "screenshot_path", None))} for r in runs]
 
 @app.delete("/api/history/{run_id}")
 def delete_run(run_id: int):
@@ -171,6 +343,17 @@ def delete_run(run_id: int):
     db.commit()
     db.close()
     return {"ok": True}
+
+
+@app.get("/api/history/{run_id}/screenshot")
+def get_screenshot(run_id: int):
+    db = SessionLocal()
+    run = db.query(RunHistory).filter(RunHistory.id == run_id).first()
+    db.close()
+    path = getattr(run, "screenshot_path", None) if run else None
+    if not path:
+        raise HTTPException(status_code=404, detail="No screenshot")
+    return FileResponse(path, media_type="image/png")
 
 @app.get("/api/history/{run_id}/download")
 def download(run_id: int):

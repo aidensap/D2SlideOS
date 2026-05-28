@@ -13,9 +13,12 @@ class ReportJob(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    report_type = Column(String, nullable=False)  # sales | delivery | materials
-    recipients = Column(String, nullable=False)   # comma-separated emails
-    schedule = Column(String, default="")         # cron expression, empty = manual only
+    report_type = Column(String, nullable=False)   # URL (screenshot) or csv id or SAC story id
+    source = Column(String, default="screenshot")  # screenshot | csv | sac
+    recipients = Column(String, default="")        # comma-separated emails
+    schedule = Column(String, default="")          # cron expression, empty = manual only
+    lang = Column(String, default="zh")            # zh | en
+    model = Column(String, default="gpt-4o-mini")  # AI model per task
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -28,11 +31,24 @@ class RunHistory(Base):
     job_name = Column(String, nullable=False)
     started_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
-    status = Column(String, default="running")    # running | success | failed
+    status = Column(String, default="running")     # running | success | failed
     file_path = Column(String, nullable=True)
+    screenshot_path = Column(String, nullable=True)
     insights = Column(Text, nullable=True)
     error = Column(Text, nullable=True)
 
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # add columns that may not exist in older DBs
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    existing = {c["name"] for c in inspector.get_columns("report_jobs")}
+    with engine.connect() as conn:
+        for col, default in [("source","'screenshot'"), ("lang","'zh'"), ("model","'gpt-4o-mini'")]:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE report_jobs ADD COLUMN {col} TEXT DEFAULT {default}"))
+        existing_run = {c["name"] for c in inspector.get_columns("run_history")}
+        if "screenshot_path" not in existing_run:
+            conn.execute(text("ALTER TABLE run_history ADD COLUMN screenshot_path TEXT"))
+        conn.commit()
