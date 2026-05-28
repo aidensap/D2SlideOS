@@ -1,8 +1,27 @@
 # D2SlideOS
 
-> **SAP BI → AI Analysis → PPT, fully automated.**
+> **SAP BI Report → AI Analysis → PPT, fully automated.**
 
-D2SlideOS is an AI-powered report agent that pulls data from SAP BW (or any CSV source), sends it to an LLM for analysis, and generates a polished PowerPoint deck — ready to send to your manager.
+D2SlideOS is an AI-powered report automation tool. It uses RPA (browser automation) to screenshot SAP Analytics Cloud story pages, sends the image to GPT-4o Vision for analysis, and automatically generates a PowerPoint deck — optionally emailed to recipients on a schedule.
+
+---
+
+## How It Works
+
+```
+Scheduled trigger / Manual run
+        ↓
+Playwright (Edge) opens SAC report page
+(uses saved login cookies — no repeated login)
+        ↓
+Screenshot saved as PNG
+        ↓
+GPT-4o Vision API analyzes the chart
+        ↓
+python-pptx builds PPT (screenshot + AI insights)
+        ↓
+(Optional) SMTP email to recipients
+```
 
 ---
 
@@ -10,33 +29,26 @@ D2SlideOS is an AI-powered report agent that pulls data from SAP BW (or any CSV 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                        Browser UI                       │
-│   Model selector · Language toggle · Job manager        │
+│                      Browser UI                         │
+│   Task card manager · One-time SAC login                │
+│   Run history · Screenshot thumbnails · PPT download    │
 └────────────────────┬────────────────────────────────────┘
                      │ HTTP
 ┌────────────────────▼────────────────────────────────────┐
 │                  FastAPI Backend                        │
 │                                                         │
-│  /api/jobs  ──►  bw_connector.py  ──►  DataFrame        │
+│  /api/jobs  ──►  screenshot_rpa.py  ──►  PNG            │
 │                                            │            │
-│                                    agent.py (AI)        │
+│                                    agent.py (GPT Vision)│
 │                                            │            │
 │                                   slide_builder.py      │
 │                                            │            │
 │                                    output/*.pptx        │
-└────────────────────────────────────────────────────────-┘
+└─────────────────────────────────────────────────────────┘
          │                              │
    SAP AI Core                    SQLite (jobs +
   (GPT / Claude)                   run history)
 ```
-
-**Data flow per run:**
-1. User clicks ▶ Run on a job
-2. `bw_connector.py` reads CSV from `mock_data/` (or calls BW OData/RFC in production)
-3. `agent.py` sends the raw CSV + prompt to SAP AI Core LLM
-4. LLM returns structured plain-text analysis (Key Findings + Recommendations)
-5. `slide_builder.py` renders: Title slide → Chart slide → AI Insights slide(s)
-6. `.pptx` saved to `output/`, download link appears in history
 
 ---
 
@@ -46,34 +58,12 @@ D2SlideOS is an AI-powered report agent that pulls data from SAP BW (or any CSV 
 |-------|-----------|
 | Backend | FastAPI + uvicorn |
 | Database | SQLite via SQLAlchemy |
-| AI | SAP AI Core (`generative-ai-hub-sdk` v4.12.4) |
-| Models | GPT-4o mini / GPT-4o / Claude (via LangChain proxy) |
-| Slide gen | python-pptx + matplotlib |
+| RPA Screenshots | Playwright (Microsoft Edge) |
+| AI Analysis | SAP AI Core (`generative-ai-hub-sdk` v4.12.4) |
+| Models | GPT-4o mini / GPT-4o / Claude 3.5 / Claude 4.6 |
+| Slide generation | python-pptx |
 | Frontend | Vanilla HTML/CSS/JS (zero dependencies) |
 | Deploy | Docker + docker-compose |
-
----
-
-## Database
-
-D2SlideOS uses **SQLite** by default — the entire database is a single local file (`aiden_ai.db`), zero configuration needed.
-
-| Table | Stores |
-|-------|--------|
-| `ReportJob` | Created jobs (name, data source, recipients, schedule) |
-| `RunHistory` | Every run (status, AI insights, PPT path, timestamps) |
-
-**Scaling to PostgreSQL:** SQLAlchemy abstracts the database layer, so switching only requires changing one line in `config.py`:
-
-```python
-# SQLite (default)
-DATABASE_URL = "sqlite:///./aiden_ai.db"
-
-# PostgreSQL (production)
-DATABASE_URL = "postgresql://user:password@host:5432/d2slideos"
-```
-
-No other code changes needed.
 
 ---
 
@@ -82,17 +72,22 @@ No other code changes needed.
 ```
 D2SlideOS/
 ├── app/
-│   ├── main.py              # FastAPI routes
-│   ├── agent.py             # SAP AI Core LLM call
-│   ├── config.py            # Env var loading
-│   ├── models.py            # SQLite: ReportJob + RunHistory
+│   ├── main.py                  # FastAPI routes + APScheduler cron jobs
+│   ├── agent.py                 # AI: text analysis + GPT-4o Vision screenshot analysis
+│   ├── config.py                # Env var loading
+│   ├── models.py                # SQLite: ReportJob + RunHistory (with auto-migration)
 │   └── tools/
-│       ├── bw_connector.py  # Data source (mock CSV / OData / RFC)
-│       ├── slide_builder.py # PPT generation (auto-paginates insights)
-│       └── distributor.py   # SMTP email distribution
-├── mock_data/               # *.csv files auto-scanned as report sources
-├── output/                  # Generated .pptx files
-├── .env.example             # Credential template
+│       ├── screenshot_rpa.py    # Playwright RPA: login, screenshot, dialog removal
+│       ├── sac_connector.py     # SAC OAuth Client Credentials (fallback)
+│       ├── slide_builder.py     # PPT generation: screenshot embed + paginated insights
+│       ├── bw_connector.py      # BW data source (mock CSV / OData / RFC)
+│       └── distributor.py       # SMTP email distribution
+├── app/static/
+│   └── index.html               # Single-page frontend
+├── output/
+│   └── screenshots/             # Screenshot PNGs (gitignored, auto-created)
+├── rpa_session.json             # Login cookies (gitignored, auto-generated)
+├── .env.example                 # Credential template
 ├── Dockerfile
 └── docker-compose.yml
 ```
@@ -105,11 +100,12 @@ D2SlideOS/
 
 ```bash
 # 1. Clone
-git clone <repo-url>
+git clone https://github.com/aidensap/D2SlideOS.git
 cd D2SlideOS
 
 # 2. Install dependencies
 pip install -r requirements.txt
+playwright install msedge
 
 # 3. Configure credentials
 cp .env.example .env
@@ -144,14 +140,11 @@ AICORE_CLIENT_SECRET=...
 AICORE_BASE_URL=https://api.ai.<region>.ml.hana.ondemand.com/v2
 AICORE_RESOURCE_GROUP=default
 
-# Defaults (overridable from UI at runtime)
+# Defaults (overridable per task from the UI)
 AI_MODEL=gpt-4o-mini
-CHART_LANG=en
+CHART_LANG=zh
 
-# Data source mode: mock | odata | rfc
-BW_MODE=mock
-
-# Email (optional — skip for demo)
+# Email (optional)
 EMAIL_HOST=
 EMAIL_PORT=587
 EMAIL_USER=
@@ -164,23 +157,19 @@ EMAIL_PASSWORD=
 
 ## Features
 
-### Current
-- **Multi-model support** — switch between GPT-4o mini, GPT-4o, Claude from the UI, no restart needed
-- **Bilingual output** — English or Chinese AI analysis + chart labels, selectable from UI
-- **Auto chart detection** — reads DataFrame columns to pick chart type automatically:
-  - `{MONTH, REGIO, NETWR}` → grouped bar (sales by region)
-  - `{ON_TIME, LATE, MONTH}` → stacked bar (delivery performance)
-  - anything else → horizontal bar (top 10 by value)
-- **Auto-paginated insights** — AI analysis slides auto-split across multiple pages (14 lines/slide) so content never overflows
-- **Run history** — every run logged with status, timestamp, AI insights preview (expandable), and PPT download
-- **One-click job** — create a job, click Run, job auto-deletes after submission, PPT appears in history
+### Implemented
+- **RPA auto-screenshot** — Playwright drives Edge to open SAC pages, waits for charts to render, removes popups, then screenshots
+- **One-time login** — Login once to save cookies; SAP SSO covers all report URLs under the same domain
+- **GPT-4o Vision analysis** — Screenshot sent to GPT-4o for chart interpretation, returns structured insights in Chinese or English
+- **Auto PPT generation** — Title slide + screenshot slide + AI insights slide, one-click download
+- **Per-task model & language** — Each task independently selects model (GPT-4o mini / GPT-4o / Claude) and output language
+- **Cron scheduling** — Cron expression per task; schedules survive server restarts
+- **Run history** — Every run logged with screenshot thumbnail, expandable AI insights, and PPT download link
 
 ### Roadmap
-- **BW OData connector** — switch `BW_MODE=odata` to pull live data from SAP BW
-- **BW RFC connector** — direct function module calls via PyRFC (requires SAP NW RFC SDK)
-- **Screenshot-to-PPT (RPA mode)** — upload a screenshot of a SAP portal report; multimodal LLM extracts the data, feeds it through the same pipeline
-- **Email distribution** — SMTP send to recipients on job completion (service account, no OAuth needed for demo; Microsoft Graph API for production)
-- **Scheduled runs** — cron-based scheduling (field already in UI, backend execution TBD)
+- **Email distribution** — SMTP auto-send PPT to recipients on completion (field already in UI)
+- **BW OData connector** — `BW_MODE=odata` to pull live data from SAP BW
+- **Docker deployment testing**
 
 ---
 
@@ -188,17 +177,16 @@ EMAIL_PASSWORD=
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/config/model` | Get current model + available models |
-| POST | `/api/config/model` | Switch active model |
-| GET | `/api/config/lang` | Get current chart language |
-| POST | `/api/config/lang` | Switch language (`en` / `zh`) |
-| GET | `/api/reports/available` | List available data sources |
-| GET | `/api/jobs` | List active jobs |
-| POST | `/api/jobs` | Create a job |
-| DELETE | `/api/jobs/{id}` | Delete a job |
-| POST | `/api/jobs/{id}/run` | Run a job (async) |
+| GET | `/api/rpa/session-status` | Check login session status |
+| POST | `/api/rpa/login` | Open browser for interactive login, save cookies |
+| POST | `/api/rpa/logout` | Clear saved cookies |
+| GET | `/api/jobs` | List all tasks |
+| POST | `/api/jobs` | Create a task |
+| DELETE | `/api/jobs/{id}` | Delete a task |
+| POST | `/api/jobs/{id}/run` | Run a task (async) |
 | GET | `/api/history` | List run history |
 | DELETE | `/api/history/{id}` | Delete a history entry |
+| GET | `/api/history/{id}/screenshot` | Get screenshot PNG |
 | GET | `/api/history/{id}/download` | Download generated `.pptx` |
 
 ---
@@ -208,13 +196,7 @@ EMAIL_PASSWORD=
 - Package: `generative-ai-hub-sdk` (not `sap-ai-sdk-gen`)
 - GPT models: `from gen_ai_hub.proxy.native.openai.clients import OpenAI`
 - Claude models: `from gen_ai_hub.proxy.langchain.openai import ChatOpenAI` (no native Anthropic module in v4.12.4)
-- Credentials set via environment variables (see `.env` above)
-
----
-
-## Adding Mock Data
-
-Drop any `.csv` file into `mock_data/` — it will appear automatically in the data source dropdown. Column names drive chart type detection, so using SAP field names (`NETWR`, `REGIO`, `MONTH`, etc.) gets you the right chart automatically.
+- Vision (image analysis) only works with GPT-4o series; Claude via LangChain proxy cannot accept image input
 
 ---
 
