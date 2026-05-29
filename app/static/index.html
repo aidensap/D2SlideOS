@@ -148,12 +148,13 @@
     <div class="session-dot" id="sessionDot">
       <span class="dot"></span><span id="sessionLabel">检查会话...</span>
     </div>
-    <button class="btn btn-danger btn-sm" id="clearSessionBtn" onclick="clearSession()" style="display:none">清除会话</button>
+    <button class="btn btn-primary btn-sm" id="loginBtn" onclick="showLoginModal()">登录 SAC</button>
+    <button class="btn btn-danger btn-sm" id="logoutBtn" onclick="clearSession()" style="display:none">退出登录</button>
   </div>
 </header>
 
 <main>
-  <div id="setupBanner" style="display:none;margin-bottom:1.5rem">
+  <div id="setupBanner" style="margin-bottom:1.5rem">
     <div style="background:var(--bg2);border:1px solid var(--warn);border-radius:12px;padding:1.3rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
       <div style="flex:1;min-width:200px">
         <div style="font-size:.85rem;font-weight:600;color:var(--warn);margin-bottom:.4rem">⚠ 尚未登录 SAC 系统</div>
@@ -162,7 +163,6 @@
       <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:300px">
         <input id="sacBaseUrl" placeholder="SAC 系统地址" value="https://analytics-cn.cn40.analytics.sapcloud.cn"
                style="flex:1;padding:.5rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.82rem;outline:none">
-        <button class="btn btn-primary btn-sm" onclick="showLoginModal()">登录 SAC</button>
       </div>
     </div>
   </div>
@@ -191,19 +191,50 @@
     </div>
 
     <div class="field">
+      <label>数据来源</label>
+      <div class="pill-row" id="fSourceRow">
+        <button class="p-btn active" onclick="setSource('screenshot',this)">📸 SAC Story 截图</button>
+        <button class="p-btn" onclick="setSource('upload',this)">📁 上传 CSV / Excel</button>
+      </div>
+    </div>
+
+    <div class="field" id="fUrlField">
       <label>报表网址（SAC Story URL）</label>
       <input id="fUrl" placeholder="https://analytics-cn.cn40.analytics.sapcloud.cn/sap/fpa/ui/app.html#/story2&/s2/...">
       <p class="hint">程序会自动打开这个页面截图。首次运行时会弹出浏览器请你登录，之后全自动。</p>
     </div>
 
+    <div class="field" id="fUploadField" style="display:none">
+      <label>上传文件（CSV / Excel）</label>
+      <input type="file" id="fFile" accept=".csv,.xlsx,.xls"
+        style="width:100%;padding:.52rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.87rem;outline:none">
+      <p class="hint">支持 .csv / .xlsx / .xls，AI 会自动分析表格数据并生成 PPT。</p>
+    </div>
+
     <div class="field">
       <label>定时调度 <span style="color:var(--muted);font-weight:400">（留空 = 只手动运行）</span></label>
-      <input id="fSchedule" placeholder="cron 表达式，例：0 9 * * 1  →  每周一早 9 点">
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input id="fScheduleText" placeholder="例：每周一早上9点、每天下午3点半..." style="flex:1"
+          oninput="scheduleInputTimer(this.value)">
+        <button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted);white-space:nowrap" onclick="parseSchedule()">解析</button>
+      </div>
+      <div id="fSchedulePreview" style="margin-top:.4rem;font-size:.75rem;display:none">
+        <span id="fScheduleDesc" style="color:var(--correct)"></span>
+        <span id="fScheduleCron" style="color:var(--muted);margin-left:.5rem"></span>
+      </div>
+      <input type="hidden" id="fSchedule">
     </div>
 
     <div class="field">
       <label>发送邮箱 <span style="color:var(--muted);font-weight:400">（逗号分隔，可留空）</span></label>
       <input id="fRecipients" placeholder="a@sap.com, b@sap.com">
+    </div>
+
+    <div class="field">
+      <label>邮件正文 <span style="color:var(--muted);font-weight:400">（可留空，留空使用默认模板）</span></label>
+      <textarea id="fEmailBody" placeholder="您好，请查收本周销售报告，如有疑问请联系..." rows="4"
+        style="width:100%;padding:.58rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.87rem;outline:none;resize:vertical;font-family:inherit"></textarea>
+      <p class="hint">AI 分析摘要和 PPT 附件会自动附上，无需手动添加。</p>
     </div>
 
     <div class="field">
@@ -260,7 +291,7 @@ const MODELS = [
   {id:"anthropic--claude-3.5-sonnet", label:"Claude 3.5", prov:"Anthropic"},
 ];
 
-let _fLang = "zh", _fModel = "gpt-4o-mini";
+let _fLang = "zh", _fModel = "gpt-4o-mini", _fSource = "screenshot";
 let _pendingRunJobId = null;   // job waiting for login before run
 let _hasSession = false;
 
@@ -282,24 +313,33 @@ function fmtDate(s) {
 
 // ── Session status (header indicator) ──
 async function checkSession() {
-  const { has_session } = await api("/api/rpa/session-status");
-  _hasSession = has_session;
-  const dot = $("sessionDot");
-  dot.className = "session-dot" + (has_session ? " ok" : "");
-  $("sessionLabel").textContent = has_session ? "会话已保存" : "未登录";
-  $("clearSessionBtn").style.display = has_session ? "" : "none";
-  $("setupBanner").style.display = has_session ? "none" : "";
+  try {
+    const { has_session } = await api("/api/rpa/session-status");
+    _hasSession = has_session;
+    $("sessionDot").className = "session-dot" + (has_session ? " ok" : "");
+    $("sessionLabel").textContent = has_session ? "会话已保存" : "未登录";
+    $("loginBtn").style.display = has_session ? "none" : "";
+    $("logoutBtn").style.display = has_session ? "" : "none";
+    $("setupBanner").style.display = has_session ? "none" : "";
+  } catch(e) {
+    $("sessionLabel").textContent = "未登录";
+    $("loginBtn").style.display = "";
+    $("logoutBtn").style.display = "none";
+    $("setupBanner").style.display = "";
+  }
 }
 async function clearSession() {
-  if (!confirm("清除会话后，下次运行任务需要重新登录。确认？")) return;
+  if (!confirm("退出登录后，下次运行任务需要重新登录。确认？")) return;
   await api("/api/rpa/logout", {method:"POST"});
-  toast("已清除会话","warn"); checkSession();
+  toast("已退出登录","warn"); checkSession();
 }
 
 // ── Modal ──
 function openModal() {
   _fLang = "zh"; _fModel = "gpt-4o-mini";
-  $("fName").value=""; $("fUrl").value=""; $("fSchedule").value=""; $("fRecipients").value="";
+  $("fName").value=""; $("fUrl").value=""; $("fSchedule").value=""; $("fScheduleText").value=""; $("fSchedulePreview").style.display="none"; $("fRecipients").value=""; $("fEmailBody").value="";
+  _fSource="screenshot"; $("fUrlField").style.display=""; $("fUploadField").style.display="none";
+  document.querySelectorAll("#fSourceRow .p-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
   renderModels(); renderLang();
   $("modal").style.display="flex";
   setTimeout(()=>$("fName").focus(),50);
@@ -322,17 +362,80 @@ function setModel(id,btn) {
   btn.classList.add("active");
 }
 function setLang(l,btn) { _fLang=l; renderLang(); }
+let _scheduleTimer = null;
+function scheduleInputTimer(val) {
+  clearTimeout(_scheduleTimer);
+  if (!val.trim()) {
+    $("fSchedule").value = "";
+    $("fSchedulePreview").style.display = "none";
+    return;
+  }
+  _scheduleTimer = setTimeout(() => parseSchedule(), 800);
+}
+
+async function parseSchedule() {
+  const text = $("fScheduleText").value.trim();
+  if (!text) return;
+  try {
+    const r = await api("/api/schedule/parse", {method:"POST", body:JSON.stringify({text})});
+    $("fSchedule").value = r.cron;
+    $("fScheduleDesc").textContent = r.description;
+    $("fScheduleCron").textContent = "(" + r.cron + ")";
+    $("fSchedulePreview").style.display = "";
+  } catch(e) {
+    $("fScheduleDesc").textContent = "无法解析，请换一种说法";
+    $("fScheduleDesc").style.color = "var(--wrong)";
+    $("fScheduleCron").textContent = "";
+    $("fSchedulePreview").style.display = "";
+    $("fSchedule").value = "";
+  }
+}
+
+function setSource(s,btn) {
+  _fSource=s;
+  document.querySelectorAll("#fSourceRow .p-btn").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  $("fUrlField").style.display = s==="screenshot" ? "" : "none";
+  $("fUploadField").style.display = s==="upload" ? "" : "none";
+}
 
 async function saveTask() {
-  const name=$("fName").value.trim(), url=$("fUrl").value.trim();
+  const name=$("fName").value.trim();
   if (!name) { toast("请填写任务名称","err"); return; }
-  if (!url)  { toast("请填写报表网址","err"); return; }
+
+  let report_type = "";
+  if (_fSource === "upload") {
+    const file = $("fFile").files[0];
+    if (!file) { toast("请选择上传文件","err"); return; }
+    const fd = new FormData(); fd.append("file", file);
+    try {
+      const r = await fetch("/api/upload", {method:"POST", body:fd});
+      if (!r.ok) throw new Error(await r.text());
+      const j = await r.json();
+      report_type = j.path;
+    } catch(e) { toast("上传失败: "+e.message,"err"); return; }
+  } else {
+    report_type = $("fUrl").value.trim();
+    if (!report_type) { toast("请填写报表网址","err"); return; }
+  }
+
   try {
+    // auto-parse schedule if user typed text but didn't click 解析
+    const schedText = $("fScheduleText").value.trim();
+    let schedCron = $("fSchedule").value.trim();
+    if (schedText && !schedCron) {
+      try {
+        const p = await api("/api/schedule/parse", {method:"POST", body:JSON.stringify({text:schedText})});
+        schedCron = p.cron;
+        $("fSchedule").value = schedCron;
+      } catch(e) { toast("调度时间解析失败，请重新输入","err"); return; }
+    }
     await api("/api/jobs",{method:"POST",body:JSON.stringify({
-      name, report_type:url, source:"screenshot",
+      name, report_type, source:_fSource,
       lang:_fLang, model:_fModel,
       recipients:$("fRecipients").value.trim(),
-      schedule:$("fSchedule").value.trim(),
+      schedule:schedCron,
+      email_body:$("fEmailBody").value.trim(),
     })});
     toast("任务已创建"); closeModal(); refresh();
   } catch(e) { toast("创建失败: "+e.message,"err"); }
@@ -342,18 +445,41 @@ async function saveTask() {
 function renderTasks(jobs) {
   const modelLabel = id => (MODELS.find(m=>m.id===id)||{label:id||"GPT-4o mini"}).label;
   const cards = jobs.map(j=>`
-    <div class="task-card">
-      <div class="tc-header">
+    <div class="task-card" id="tc-${j.id}">
+      <div class="tc-header" style="cursor:pointer" onclick="toggleCard(${j.id})">
         <div class="tc-name">${esc(j.name)}</div>
-        <div class="tc-pill">${j.lang==="zh"?"中文":"EN"} · ${modelLabel(j.model).split(" ")[0]}</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <div class="tc-pill">${j.lang==="zh"?"中文":"EN"} · ${modelLabel(j.model).split(" ")[0]}</div>
+          <span id="tc-arrow-${j.id}" style="color:var(--muted);font-size:.75rem">▼</span>
+        </div>
       </div>
       <div class="tc-url" title="${esc(j.report_type)}">${esc(j.report_type.replace(/^https?:\/\//,""))}</div>
       <div class="tc-meta">
         <span>⏱ ${esc(j.schedule||"手动运行")}</span>
         ${j.recipients?`<span>✉ ${esc(j.recipients)}</span>`:""}
       </div>
-      <div class="tc-actions">
-        <button class="btn btn-run btn-sm" onclick="runTask(${j.id},this)">▶ 运行</button>
+      <div id="tc-detail-${j.id}" style="display:none;margin-top:.6rem;border-top:1px solid var(--border);padding-top:.8rem">
+        <div style="display:flex;flex-direction:column;gap:.55rem">
+          <div><label style="font-size:.72rem;color:var(--muted)">任务名称</label>
+            <input id="te-name-${j.id}" value="${esc(j.name)}" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">报表地址 / 文件路径</label>
+            <input id="te-url-${j.id}" value="${esc(j.report_type)}" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">定时调度（cron，留空=手动）</label>
+            <input id="te-sched-${j.id}" value="${esc(j.schedule||"")}" placeholder="0 9 * * 1" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">收件人邮箱（逗号分隔）</label>
+            <input id="te-rcpt-${j.id}" value="${esc(j.recipients||"")}" placeholder="a@sap.com, b@qq.com" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">邮件正文（留空用默认）</label>
+            <textarea id="te-body-${j.id}" rows="2" placeholder="自定义邮件正文..." style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none;resize:vertical">${esc(j.email_body||"")}</textarea></div>
+          <div style="display:flex;gap:.4rem;justify-content:flex-end">
+            <button class="btn btn-primary btn-sm" onclick="saveCardEdit(${j.id},'${j.source||'screenshot'}','${j.lang||'zh'}','${j.model||'gpt-4o-mini'}')">保存修改</button>
+          </div>
+        </div>
+      </div>
+      <div class="tc-actions" style="margin-top:.6rem">
+        ${j.schedule
+          ? `<button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted)" onclick="runTask(${j.id},this)">▶ 立即运行</button>`
+          : `<button class="btn btn-run btn-sm" onclick="runTask(${j.id},this)">▶ 运行</button>`
+        }
         <button class="btn btn-danger btn-sm" onclick="deleteTask(${j.id})">删除</button>
       </div>
     </div>`).join("");
@@ -363,11 +489,33 @@ function renderTasks(jobs) {
     </div>`;
 }
 
-// ── Run ──
+function toggleCard(id) {
+  const detail = $(`tc-detail-${id}`);
+  const arrow = $(`tc-arrow-${id}`);
+  const open = detail.style.display === "block";
+  detail.style.display = open ? "none" : "block";
+  arrow.textContent = open ? "▼" : "▲";
+}
+
+async function saveCardEdit(id, source, lang, model) {
+  const name = $(`te-name-${id}`).value.trim();
+  const report_type = $(`te-url-${id}`).value.trim();
+  const schedule = $(`te-sched-${id}`).value.trim();
+  const recipients = $(`te-rcpt-${id}`).value.trim();
+  const email_body = $(`te-body-${id}`).value.trim();
+  if (!name || !report_type) { toast("名称和地址不能为空","err"); return; }
+  try {
+    await api(`/api/jobs/${id}`, {method:"PATCH", body:JSON.stringify({
+      name, report_type, schedule, recipients, email_body, source, lang, model
+    })});
+    toast("已保存"); refresh();
+  } catch(e) { toast("保存失败: "+e.message,"err"); }
+}
+
+
 async function runTask(id, btn) {
   btn.disabled=true; btn.textContent="准备中...";
   try {
-    // if no session, trigger login flow first
     if (!_hasSession) {
       _pendingRunJobId = id;
       showLoginModal();
@@ -376,7 +524,19 @@ async function runTask(id, btn) {
     }
     await _doRun(id);
   } catch(e) {
-    toast("运行失败: "+e.message,"err");
+    if (e.message.includes("SESSION_EXPIRED")) {
+      toast("登录已失效，请重新登录","warn");
+      _hasSession = false;
+      await checkSession();
+      _pendingRunJobId = id;
+      showLoginModal();
+    } else {
+      toast("运行失败: "+e.message,"err");
+    }
+    btn.disabled=false; btn.textContent="▶ 运行";
+  }
+}
+
     btn.disabled=false; btn.textContent="▶ 运行";
   }
 }
@@ -400,7 +560,12 @@ async function startLogin() {
   btn.disabled=true; btn.textContent="等待登录（请在弹出窗口完成）...";
   try {
     const url = $("loginUrlInput").value.trim() || "https://analytics-cn.cn40.analytics.sapcloud.cn";
-    await api("/api/rpa/login",{method:"POST",body:JSON.stringify({url})});
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 300000); // 5 min timeout
+    const r = await fetch("/api/rpa/login", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({url}), signal:ctrl.signal});
+    clearTimeout(tid);
+    if (!r.ok) throw new Error(await r.text());
+    await r.json();
     toast("会话已保存！","ok");
     $("loginModal").style.display="none";
     await checkSession();

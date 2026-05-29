@@ -20,10 +20,8 @@ SAC_CLIENT_ID = os.getenv("SAC_CLIENT_ID", "")
 SAC_CLIENT_SECRET = os.getenv("SAC_CLIENT_SECRET", "")
 SAC_REDIRECT_URI = os.getenv("SAC_REDIRECT_URI", "http://localhost:8001/auth/callback")
 
-EMAIL_HOST = os.getenv("EMAIL_HOST", "")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
-EMAIL_USER = os.getenv("EMAIL_USER", "")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "D2SlideOS <onboarding@resend.dev>")
 
 OUTPUT_DIR = "output"
 os.makedirs(OUTPUT_DIR, exist_ok=True)

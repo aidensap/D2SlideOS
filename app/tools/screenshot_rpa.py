@@ -69,6 +69,23 @@ def take_screenshot(url: str, output_path: str | None = None) -> str:
         page = ctx.new_page()
         page.goto(url, wait_until="domcontentloaded", timeout=90000)
 
+        # Detect redirect to login page (session expired)
+        current_url = page.url
+        if any(k in current_url for k in ["login", "signin", "sso", "authentication", "logon"]):
+            browser.close()
+            clear_session()
+            raise RuntimeError("SESSION_EXPIRED")
+
+        # Wait for loading screen to disappear
+        try:
+            page.wait_for_selector(
+                "[class*='loadingScreen'], [class*='loading-screen'], [class*='splashScreen']",
+                state="hidden",
+                timeout=60000,
+            )
+        except Exception:
+            pass
+
         # Wait for SAC UI shell
         try:
             page.wait_for_selector(
@@ -78,19 +95,24 @@ def take_screenshot(url: str, output_path: str | None = None) -> str:
         except Exception:
             pass
 
-        # Wait for charts to render
+        # Wait for charts to render AND loading screen to be gone
         try:
             page.wait_for_function(
                 """() => {
+                    // Must have real canvas elements
                     const canvases = Array.from(document.querySelectorAll('canvas'));
-                    return canvases.length > 0 && canvases.some(c => c.width > 200 && c.height > 100);
+                    const hasCharts = canvases.length > 0 && canvases.some(c => c.width > 200 && c.height > 100);
+                    // Must not have loading text on screen
+                    const bodyText = document.body.innerText || '';
+                    const isLoading = bodyText.includes('Loading your story') || bodyText.includes('Loading...');
+                    return hasCharts && !isLoading;
                 }""",
-                timeout=30000,
+                timeout=120000,
             )
         except Exception:
             pass
 
-        time.sleep(4)
+        time.sleep(5)
 
         # Remove any dialogs/popups right before screenshotting
         page.evaluate("""() => {

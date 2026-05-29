@@ -2,8 +2,10 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
+import os
 
-engine = create_engine("sqlite:///aiden_ai.db", connect_args={"check_same_thread": False})
+_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "aiden_ai.db")
+engine = create_engine(f"sqlite:///{_DB_PATH}", connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
@@ -19,6 +21,7 @@ class ReportJob(Base):
     schedule = Column(String, default="")          # cron expression, empty = manual only
     lang = Column(String, default="zh")            # zh | en
     model = Column(String, default="gpt-4o-mini")  # AI model per task
+    email_body = Column(Text, default="")           # custom email body
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -45,7 +48,7 @@ def init_db():
     inspector = inspect(engine)
     existing = {c["name"] for c in inspector.get_columns("report_jobs")}
     with engine.connect() as conn:
-        for col, default in [("source","'screenshot'"), ("lang","'zh'"), ("model","'gpt-4o-mini'")]:
+        for col, default in [("source","'screenshot'"), ("lang","'zh'"), ("model","'gpt-4o-mini'"), ("email_body","''")] :
             if col not in existing:
                 conn.execute(text(f"ALTER TABLE report_jobs ADD COLUMN {col} TEXT DEFAULT {default}"))
         existing_run = {c["name"] for c in inspector.get_columns("run_history")}

@@ -1,6 +1,7 @@
+import os
 import asyncio
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -10,7 +11,7 @@ from app.models import init_db, SessionLocal, ReportJob, RunHistory
 from app.tools.bw_connector import get_report, list_available_reports
 from app.tools.sac_connector import SACConnector
 from app.tools.screenshot_rpa import take_screenshot, has_session, login_interactive, clear_session
-from app.agent import analyze_data, analyze_screenshot
+from app.agent import analyze_data, analyze_screenshot, natural_language_to_cron
 from app.tools.slide_builder import generate_slides, generate_slides_from_screenshot
 from app.tools.distributor import send_report
 import app.config as cfg
@@ -18,7 +19,29 @@ import app.config as cfg
 app = FastAPI(title="D2SlideOS")
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
-_scheduler = AsyncIOScheduler()
+UPLOAD_DIR = "output/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+_scheduler = AsyncIOScheduler(timezone='Asia/Shanghai')
+
+
+def _make_cron_trigger(cron_expr: str):
+    parts = cron_expr.strip().split()
+    if len(parts) != 5:
+        return CronTrigger.from_crontab(cron_expr, timezone='Asia/Shanghai')
+    minute, hour, day, month, dow = parts
+    if dow not in ('*',):
+        def remap(w):
+            return str((int(w) - 1) % 7)
+        if '-' in dow:
+            a, b = dow.split('-')
+            dow = remap(a) + '-' + remap(b)
+        elif ',' in dow:
+            dow = ','.join(remap(w) for w in dow.split(','))
+        else:
+            dow = remap(dow)
+    return CronTrigger(minute=minute, hour=hour, day=day, month=month,
+                       day_of_week=dow, timezone='Asia/Shanghai')
 
 
 def _get_sac() -> SACConnector:
@@ -40,6 +63,11 @@ def startup():
 @app.on_event("shutdown")
 def shutdown():
     _scheduler.shutdown(wait=False)
+
+
+@app.get("/api/scheduler/jobs")
+def scheduler_jobs():
+    return [{"id": j.id, "next_run": str(j.next_run_time)} for j in _scheduler.get_jobs()]
 
 
 @app.get("/")
@@ -90,9 +118,8 @@ async def rpa_login(body: dict):
     url = body.get("url", "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
-    loop = asyncio.get_event_loop()
     try:
-        await loop.run_in_executor(None, login_interactive, url)
+        await asyncio.get_running_loop().run_in_executor(None, login_interactive, url)
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -141,11 +168,38 @@ def set_lang(body: LangSelect):
     return {"current": cfg.CHART_LANG}
 
 
+
+@app.post("/api/schedule/parse")
+async def parse_schedule(body: dict):
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="text required")
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(None, natural_language_to_cron, text)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
 # ---------- Reports ----------
 
 @app.get("/api/reports/available")
 def available_reports():
     return list_available_reports()
+
+
+# ---------- Upload ----------
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    import shutil, uuid
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in ("csv", "xlsx", "xls"):
+        raise HTTPException(status_code=400, detail="Only CSV/Excel files are supported")
+    save_name = f"{uuid.uuid4().hex}.{ext}"
+    save_path = os.path.join(UPLOAD_DIR, save_name)
+    with open(save_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    return {"path": save_path, "filename": file.filename}
 
 
 # ---------- Jobs ----------
@@ -158,6 +212,7 @@ class JobCreate(BaseModel):
     source: str = "screenshot"
     lang: str = "zh"
     model: str = "gpt-4o-mini"
+    email_body: str = ""
 
 @app.get("/api/jobs")
 def list_jobs():
@@ -168,7 +223,7 @@ def list_jobs():
              "source": getattr(j, "source", "screenshot"),
              "recipients": j.recipients, "schedule": j.schedule,
              "lang": getattr(j, "lang", "zh"), "model": getattr(j, "model", "gpt-4o-mini"),
-             "created_at": j.created_at} for j in jobs]
+             "email_body": getattr(j, "email_body", ""), "created_at": j.created_at} for j in jobs]
 
 @app.post("/api/jobs")
 def create_job(body: JobCreate):
@@ -183,14 +238,15 @@ def create_job(body: JobCreate):
     schedule = job.schedule
     snap = {"report_type": job.report_type, "name": job.name, "recipients": job.recipients,
             "source": getattr(job, "source", "screenshot"),
-            "lang": getattr(job, "lang", "zh"), "model": getattr(job, "model", "gpt-4o-mini")}
+            "lang": getattr(job, "lang", "zh"), "model": getattr(job, "model", "gpt-4o-mini"),
+            "email_body": getattr(job, "email_body", "")}
     db.close()
 
     if schedule:
         try:
             _scheduler.add_job(
                 _run_scheduled_job,
-                CronTrigger.from_crontab(schedule),
+                _make_cron_trigger(schedule),
                 id=f"job_{job_id}",
                 replace_existing=True,
                 args=[job_id, snap],
@@ -216,6 +272,40 @@ def delete_job(job_id: int):
     return {"ok": True}
 
 
+@app.patch("/api/jobs/{job_id}")
+def update_job(job_id: int, body: JobCreate):
+    db = SessionLocal()
+    job = db.query(ReportJob).filter(ReportJob.id == job_id).first()
+    if not job:
+        db.close()
+        raise HTTPException(status_code=404, detail="Job not found")
+    for k, v in body.dict().items():
+        if hasattr(job, k):
+            setattr(job, k, v)
+    db.commit()
+    db.refresh(job)
+    schedule = job.schedule
+    snap = {"report_type": job.report_type, "name": job.name, "recipients": job.recipients,
+            "source": job.source, "lang": job.lang, "model": job.model, "email_body": job.email_body}
+    db.close()
+    try:
+        _scheduler.remove_job(f"job_{job_id}")
+    except Exception:
+        pass
+    if schedule:
+        try:
+            _scheduler.add_job(
+                _run_scheduled_job,
+                _make_cron_trigger(schedule),
+                id=f"job_{job_id}",
+                replace_existing=True,
+                args=[job_id, snap],
+            )
+        except Exception:
+            pass
+    return {"ok": True}
+
+
 # ---------- Run ----------
 
 @app.post("/api/jobs/{job_id}/run")
@@ -238,6 +328,7 @@ async def run_job(job_id: int):
         "source": getattr(job, "source", "screenshot"),
         "lang": getattr(job, "lang", "zh"),
         "model": getattr(job, "model", "gpt-4o-mini"),
+        "email_body": getattr(job, "email_body", ""),
     }
     db.close()
 
@@ -274,6 +365,16 @@ async def _execute_run(run_id: int, job: dict):
                 file_path = await loop.run_in_executor(
                     None, generate_slides_from_screenshot, screenshot_path, job["name"], insights, lang
                 )
+            elif source == "upload":
+                import pandas as pd
+                file_path_upload = job["report_type"]
+                ext = file_path_upload.rsplit(".", 1)[-1].lower()
+                if ext == "csv":
+                    df = pd.read_csv(file_path_upload)
+                else:
+                    df = pd.read_excel(file_path_upload)
+                insights = await loop.run_in_executor(None, analyze_data, df, lang)
+                file_path = await loop.run_in_executor(None, generate_slides, df, job["name"], insights, lang)
             elif source == "sac":
                 sac = _get_sac()
                 df = await loop.run_in_executor(None, sac.export_story_data, job["report_type"])
@@ -289,7 +390,10 @@ async def _execute_run(run_id: int, job: dict):
         run.insights = insights
         run.file_path = file_path
         if job.get("recipients"):
-            await loop.run_in_executor(None, send_report, file_path, job["recipients"], job["name"], insights)
+            try:
+                await loop.run_in_executor(None, send_report, file_path, job["recipients"], job["name"], insights, job.get("email_body", ""), job.get("lang", "zh"))
+            except Exception as mail_err:
+                run.error = f"[邮件发送失败] {mail_err}"
     except Exception as e:
         run.status = "failed"
         run.error = str(e)
@@ -306,7 +410,7 @@ def _reload_schedules():
         try:
             _scheduler.add_job(
                 _run_scheduled_job,
-                CronTrigger.from_crontab(job.schedule),
+                _make_cron_trigger(job.schedule),
                 id=f"job_{job.id}",
                 replace_existing=True,
                 args=[job.id, {
