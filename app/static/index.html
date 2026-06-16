@@ -465,7 +465,10 @@ async function refreshAB() {
     </div>`).join("") : '<div style="color:var(--muted);font-size:.8rem">暂无联系人</div>';
   $("abReports").innerHTML = reports.length ? reports.map(r=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:.35rem .5rem;background:var(--bg2);border-radius:6px;margin-bottom:.3rem;font-size:.82rem">
-      <span><b>${r.name}</b> <span style="color:var(--muted);font-size:.75rem">[${r.source}]</span></span>
+      <span>
+        <b>${r.name}</b> <span style="color:var(--muted);font-size:.75rem">[${r.source}]</span>
+        ${r.source==='sac' && r.original_name ? `<div style="color:var(--muted);font-size:.68rem;margin-top:.1rem;font-family:monospace">${r.original_name}</div>` : ''}
+      </span>
       <button onclick="deleteReportAlias(${r.id})" style="background:none;border:none;color:var(--wrong);cursor:pointer;font-size:.9rem">✕</button>
     </div>`).join("") : '<div style="color:var(--muted);font-size:.8rem">暂无报表</div>';
 }

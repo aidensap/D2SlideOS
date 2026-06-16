@@ -161,7 +161,7 @@ async def sac_sync_models():
     db = SessionLocal()
     db.query(ReportAlias).filter(ReportAlias.source == "sac").delete()
     for m in enriched:
-        db.add(ReportAlias(name=m["alias"], url=m["id"], source="sac"))
+        db.add(ReportAlias(name=m["alias"], url=m["id"], source="sac", original_name=m["name"]))
     db.commit()
     db.close()
     return {"added": len(enriched), "updated": 0, "total": len(enriched)}
@@ -312,7 +312,7 @@ def list_report_aliases():
     db = SessionLocal()
     rows = db.query(ReportAlias).all()
     db.close()
-    return [{"id": r.id, "name": r.name, "url": r.url, "source": r.source} for r in rows]
+    return [{"id": r.id, "name": r.name, "url": r.url, "source": r.source, "original_name": r.original_name or ""} for r in rows]
 
 @app.post("/api/report-aliases")
 def create_report_alias(body: ReportAliasCreate):

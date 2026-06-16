@@ -59,6 +59,7 @@ class ReportAlias(Base):
     name = Column(String, nullable=False)
     url = Column(String, nullable=False)
     source = Column(String, default="screenshot")
+    original_name = Column(String, default="")
 
 
 def init_db():
@@ -81,4 +82,7 @@ def init_db():
         existing_run = {c["name"] for c in inspector.get_columns("run_history")}
         if "screenshot_path" not in existing_run:
             conn.execute(text("ALTER TABLE run_history ADD COLUMN screenshot_path TEXT"))
+        existing_alias = {c["name"] for c in inspector.get_columns("report_aliases")}
+        if "original_name" not in existing_alias:
+            conn.execute(text("ALTER TABLE report_aliases ADD COLUMN original_name TEXT DEFAULT ''"))
         conn.commit()
