@@ -407,7 +407,7 @@ function fmtDate(s) {
 }
 
 // ── Session status (header indicator) ──
-async async async function checkSession() {
+async function checkSession() {
   try {
     const { connected } = await api("/api/sac/status");
     _hasSession = connected;
@@ -423,7 +423,7 @@ async async async function checkSession() {
     $("setupBanner").style.display = "";
   }
 }
-async async async function clearSession() {
+async function clearSession() {
   if (!confirm("退出登录后，下次运行任务需要重新登录。确认？")) return;
   try { await api("/api/rpa/logout", {method:"POST"}); } catch(e) {}
   toast("已退出登录","warn");
