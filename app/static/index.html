@@ -327,6 +327,12 @@
               </div>
               <div id="syncLabel" style="font-size:.7rem;color:var(--muted);margin-top:.2rem;text-align:right"></div>
             </div>
+            <div id="syncProgress" style="display:none;width:160px">
+              <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden">
+                <div id="syncBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .3s ease"></div>
+              </div>
+              <div id="syncLabel" style="font-size:.7rem;color:var(--muted);margin-top:.2rem;text-align:right"></div>
+            </div>
           </div>
         </div>
         <div id="abReports" style="margin-bottom:.8rem"></div>
@@ -469,43 +475,30 @@ async function syncSacModels() {
   const prog = document.getElementById("syncProgress");
   const bar = document.getElementById("syncBar");
   const label = document.getElementById("syncLabel");
-
-  btn.disabled = true;
-  btn.textContent = "同步中...";
-  prog.style.display = "block";
-  bar.style.width = "0%";
-
+  btn.disabled = true; btn.textContent = "同步中...";
+  prog.style.display = "block"; bar.style.width = "0%";
   let pct = 0;
-  function setProgress(p, text) {
-    pct = p;
-    bar.style.width = p + "%";
-    label.textContent = text;
-  }
-
+  function setProgress(p, text) { pct = p; bar.style.width = p + "%"; label.textContent = text; }
   setProgress(10, "连接 SAC...");
   const ticker = setInterval(() => {
     if (pct < 80) setProgress(pct + 2, pct < 30 ? "拉取模型列表..." : "AI 生成中文别名...");
   }, 600);
-
   try {
     const res = await api("/api/sac/sync-models", {method:"POST"});
-    clearInterval(ticker);
-    setProgress(100, `完成：共 ${res.total} 个模型`);
+    clearInterval(ticker); setProgress(100, `完成：共 ${res.total} 个模型`);
     setTimeout(() => { prog.style.display = "none"; }, 2000);
     toast(`同步完成：${res.total} 个 SAC 模型`);
-    await refreshAB();
-    await _loadSacModels();
+    await refreshAB(); await _loadSacModels();
   } catch(e) {
-    clearInterval(ticker);
-    setProgress(pct, "同步失败");
+    clearInterval(ticker); setProgress(pct, "同步失败");
     bar.style.background = "var(--wrong)";
     setTimeout(() => { prog.style.display = "none"; bar.style.background = "var(--accent)"; }, 2500);
     toast("同步失败: " + e.message, "err");
   } finally {
-    btn.disabled = false;
-    btn.textContent = "🔄 同步 SAC 模型";
+    btn.disabled = false; btn.textContent = "🔄 同步 SAC 模型";
   }
 }
+// _REPLACED_
 
 async function addContact() {
   const name=$("abCName").value.trim(), email=$("abCEmail").value.trim();

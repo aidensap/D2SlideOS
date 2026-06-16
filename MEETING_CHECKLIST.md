@@ -34,9 +34,8 @@
 
 - [ ] **邮件发送**：Resend 不能发 @sap.com，是否接入 SAP 内部 SMTP / Microsoft Graph API？
 - [ ] **筛选器个性化分发**：同一个 SAC 模型按不同筛选值分发给不同人（如按大区），是否列入下阶段？
-- [ ] **用户隔离**：目前所有用户共用同一个 SAC token，是否需要做 per-user 认证？
 - [ ] **数据库持久化**：每次 BTP push 后 SQLite 会重置，是否需要换成 SAP HANA Cloud 或持久化 volume？
-- [ ] 取数问题 现在是直接接入SAC Model API，由AI根据用户的自然语言输入画图 而不是用截图 上线BTP不能实现截图
+- [ ] 取数问题 现在是直接接入SAC Model API，由AI根据用户的自然语言输入画图 而不是用截图 上线BTP不能实现截图 但是不用截图是不是会丧失SAC最大的功能
 
 ### 资源 / 权限
 - [ ] 是否有可以用于测试邮件的 SAP SMTP relay 权限？
