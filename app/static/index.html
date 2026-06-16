@@ -544,7 +544,8 @@ async function nlParseTask() {
     if (r.ambiguous && r.candidates && r.candidates.length > 0) {
       status.style.color="var(--java)";
       status.textContent=`⚠️ 找到多个匹配：${r.candidates.join("、")}，请在下方手动选择模型`;
-      setSource("sac"); // switch to sac tab so user can pick
+      setSource("sac");
+      await _loadSacModels();
     } else if (r.report_source === "sac") {
       setSource("sac");
       await _loadSacModels();

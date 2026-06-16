@@ -365,11 +365,57 @@ async def parse_job_from_text(body: dict):
                 cron_description = result.get("description", "")
             except Exception:
                 pass
+        report_url = parsed.get("report_url", "")
+        report_source = parsed.get("report_source", "screenshot")
+        ambiguous = parsed.get("ambiguous", False)
+        candidates = parsed.get("candidates", [])
+
+        # Server-side fallback fuzzy match when AI didn't fill report_url
+        if not report_url and report_aliases:
+            import re as _re
+            text_lower = text.lower()
+            # score each alias by how many characters overlap with user text
+            def score(alias_name):
+                name = alias_name.lower()
+                # strip version suffix for base match
+                base = _re.sub(r'v\d+$', '', name).strip()
+                return sum(1 for c in base if c in text_lower)
+
+            scored = sorted(report_aliases, key=lambda r: score(r["name"]), reverse=True)
+            top_score = score(scored[0]["name"]) if scored else 0
+            if top_score > 0:
+                # find all with same top score
+                top_matches = [r for r in scored if score(r["name"]) == top_score]
+                if len(top_matches) == 1:
+                    report_url = top_matches[0]["url"]
+                    report_source = top_matches[0]["source"]
+                    ambiguous = False
+                    candidates = []
+                else:
+                    # check if user specified a version
+                    version_match = _re.search(r'v(\d+)', text_lower)
+                    if version_match:
+                        ver = "v" + version_match.group(1)
+                        versioned = [r for r in top_matches if ver in r["name"].lower()]
+                        if len(versioned) == 1:
+                            report_url = versioned[0]["url"]
+                            report_source = versioned[0]["source"]
+                            ambiguous = False
+                            candidates = []
+                        else:
+                            ambiguous = True
+                            candidates = [r["name"] for r in (versioned if versioned else top_matches)]
+                    else:
+                        ambiguous = True
+                        candidates = [r["name"] for r in top_matches]
+
         return {
             "name": parsed.get("name", ""),
             "lang": parsed.get("lang", "zh"),
-            "report_url": parsed.get("report_url", ""),
-            "report_source": parsed.get("report_source", "screenshot"),
+            "report_url": report_url,
+            "report_source": report_source,
+            "ambiguous": ambiguous,
+            "candidates": candidates,
             "recipients": ", ".join(parsed.get("recipient_emails", [])),
             "schedule_text": parsed.get("schedule_text", ""),
             "cron": cron,
