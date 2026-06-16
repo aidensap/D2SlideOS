@@ -545,15 +545,13 @@ async function nlParseTask() {
       status.style.color="var(--java)";
       status.textContent=`⚠️ 找到多个匹配：${r.candidates.join("、")}，请在下方手动选择模型`;
       setSource("sac"); // switch to sac tab so user can pick
+    } else if (r.report_source === "sac") {
+      setSource("sac");
+      await _loadSacModels();
+      if (r.report_url) $("fSacModel").value = r.report_url;
     } else if (r.report_url) {
-      if (r.report_source === "sac") {
-        setSource("sac");
-        await _loadSacModels();
-        $("fSacModel").value = r.report_url;
-      } else {
-        $("fUrl").value=r.report_url;
-        setSource(r.report_source||"screenshot");
-      }
+      $("fUrl").value=r.report_url;
+      setSource(r.report_source||"screenshot");
     }
     if (r.recipients) $("fRecipients").value=r.recipients;
     if (r.email_body) $("fEmailBody").value=r.email_body;
@@ -567,7 +565,11 @@ async function nlParseTask() {
       $("fSchedulePreview").style.display="";
     }
     if (!r.ambiguous) {
-      status.style.color="var(--correct)"; status.textContent="✓ 解析成功，请确认下方字段";
+      if (r.report_source === "sac" && !r.report_url) {
+        status.style.color="var(--java)"; status.textContent="✓ 已切换到 SAC 模型，请在下方选择具体模型";
+      } else {
+        status.style.color="var(--correct)"; status.textContent="✓ 解析成功，请确认下方字段";
+      }
     }
   } catch(e) {
     status.style.color="var(--wrong)"; status.textContent="解析失败: "+e.message;

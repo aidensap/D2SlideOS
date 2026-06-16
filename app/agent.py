@@ -333,6 +333,8 @@ IMPORTANT rules:
 1. If user says "国泰人寿v1", match ONLY 国泰人寿v1 — do NOT treat it as ambiguous.
 2. report_url must be the exact string from the list (e.g. "Cavc5i0esdqj5s3q3dembpas122"), not the name.
 3. Only set ambiguous=true when user is vague (e.g. just "国泰" with no version).
+4. If the user mentions "模型", "SAC模型", "从模型", or "model", set report_source="sac" even if no report matched.
+5. If the available reports list is empty but user clearly wants a SAC model report, set report_source="sac" and ambiguous=true with empty candidates so user can pick manually.
 
 Return only valid JSON, no explanation."""
         }, {
