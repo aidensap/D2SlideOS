@@ -279,6 +279,13 @@ def list_contacts():
 @app.post("/api/contacts")
 def create_contact(body: ContactCreate):
     db = SessionLocal()
+    existing = db.query(Contact).filter(Contact.name == body.name.strip()).first()
+    if existing:
+        existing.email = body.email.strip()
+        db.commit()
+        cid = existing.id
+        db.close()
+        return {"id": cid, "name": body.name, "email": body.email}
     c = Contact(name=body.name.strip(), email=body.email.strip())
     db.add(c)
     db.commit()
@@ -317,6 +324,14 @@ def list_report_aliases():
 @app.post("/api/report-aliases")
 def create_report_alias(body: ReportAliasCreate):
     db = SessionLocal()
+    existing = db.query(ReportAlias).filter(ReportAlias.name == body.name.strip()).first()
+    if existing:
+        existing.url = body.url.strip()
+        existing.source = body.source
+        db.commit()
+        rid = existing.id
+        db.close()
+        return {"id": rid, "name": body.name, "url": body.url, "source": body.source}
     r = ReportAlias(name=body.name.strip(), url=body.url.strip(), source=body.source)
     db.add(r)
     db.commit()
