@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-pptx
+pandas
+apscheduler
+sqlalchemy
+python-dotenv
+matplotlib
+python-multipart
+requests
+resend
+generative-ai-hub-sdk
+plotly
+kaleido

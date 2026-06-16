@@ -1,0 +1,9 @@
+.git
+.env
+__pycache__
+*.pyc
+*.pyo
+output/
+rpa_session.json
+aiden_ai.db
+test_sac.py

@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>D2SlideOS</title>
+<style>
+  :root {
+    --bg:#0f172a; --bg2:#1e293b; --bg3:#263348; --border:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8;
+    --correct:#22c55e; --wrong:#ef4444; --warn:#f59e0b;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:system-ui,sans-serif; min-height:100vh; }
+
+  header {
+    background:var(--bg2); border-bottom:1px solid var(--border);
+    padding:1rem 2rem; display:flex; align-items:center; justify-content:space-between; gap:1rem;
+  }
+  header h1 { font-size:1.2rem; font-weight:700; color:var(--accent); }
+  header .h-right { display:flex; align-items:center; gap:.8rem; }
+  .session-dot { font-size:.78rem; color:var(--muted); display:flex; align-items:center; gap:.35rem; }
+  .session-dot .dot { width:7px; height:7px; border-radius:50%; background:var(--muted); display:inline-block; }
+  .session-dot.ok .dot { background:var(--correct); }
+
+  main { max-width:1060px; margin:0 auto; padding:2rem 1rem; }
+
+  /* task grid */
+  #taskGrid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+    gap:1.2rem; margin-bottom:2.5rem;
+  }
+
+  .task-card {
+    background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:1.3rem;
+    display:flex; flex-direction:column; gap:.85rem;
+  }
+  .tc-header { display:flex; align-items:flex-start; justify-content:space-between; gap:.5rem; }
+  .tc-name { font-weight:600; font-size:.95rem; color:var(--text); flex:1; }
+  .tc-pill {
+    font-size:.68rem; font-weight:600; padding:.18rem .5rem; border-radius:99px;
+    background:rgba(56,189,248,.12); color:var(--accent); white-space:nowrap;
+  }
+  .tc-url {
+    font-size:.72rem; color:var(--muted); overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; background:var(--bg3); padding:.32rem .6rem; border-radius:6px;
+  }
+  .tc-meta { font-size:.73rem; color:var(--muted); display:flex; gap:.7rem; flex-wrap:wrap; }
+  .tc-actions { display:flex; gap:.5rem; }
+
+  /* create card */
+  .create-card {
+    border-style:dashed; border-color:rgba(56,189,248,.3);
+    cursor:pointer; align-items:center; justify-content:center; min-height:170px;
+    transition:border-color .2s, background .2s;
+  }
+  .create-card:hover { border-color:var(--accent); background:rgba(56,189,248,.04); }
+  .cc-icon { font-size:2rem; color:var(--accent); opacity:.6; }
+  .cc-label { font-size:.85rem; color:var(--muted); margin-top:.4rem; }
+
+  /* modal */
+  .modal-back {
+    position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:1rem;
+  }
+  .modal {
+    background:var(--bg2); border:1px solid var(--border); border-radius:14px;
+    padding:1.8rem; width:100%; max-width:500px; max-height:92vh; overflow-y:auto;
+  }
+  .modal h2 { font-size:1rem; font-weight:700; color:var(--accent); margin-bottom:1.3rem; }
+  .field { margin-bottom:.95rem; }
+  label { display:block; font-size:.76rem; color:var(--muted); margin-bottom:.28rem; }
+  input, select {
+    width:100%; padding:.58rem .8rem; background:var(--bg3);
+    border:1px solid var(--border); border-radius:8px; color:var(--text);
+    font-size:.87rem; outline:none;
+  }
+  input:focus, select:focus { border-color:var(--accent); }
+  .hint { font-size:.72rem; color:var(--muted); margin-top:.28rem; line-height:1.5; }
+
+  .pill-row { display:flex; flex-wrap:wrap; gap:.45rem; }
+  .p-btn {
+    padding:.38rem .85rem; border-radius:8px; font-size:.78rem; font-weight:600;
+    cursor:pointer; border:1px solid var(--border); background:var(--bg3); color:var(--muted); transition:all .15s;
+  }
+  .p-btn:hover { border-color:var(--accent); color:var(--text); }
+  .p-btn.active { border-color:var(--accent); background:rgba(56,189,248,.12); color:var(--accent); }
+  .prov { font-size:.68rem; color:var(--muted); margin-right:.1rem; }
+
+  .btn {
+    padding:.58rem 1.3rem; border:none; border-radius:8px; font-size:.87rem;
+    font-weight:600; cursor:pointer; transition:opacity .15s;
+  }
+  .btn:hover { opacity:.85; }
+  .btn-primary { background:var(--accent); color:#0f172a; }
+  .btn-danger  { background:transparent; border:1px solid var(--wrong); color:var(--wrong); }
+  .btn-run     { background:var(--correct); color:#0f172a; }
+  .btn-sm      { padding:.32rem .75rem; font-size:.76rem; }
+  .btn:disabled { opacity:.4; cursor:not-allowed; }
+  .modal-actions { display:flex; gap:.6rem; justify-content:flex-end; margin-top:1.2rem; }
+
+  /* history */
+  #histSec h2 { font-size:1rem; font-weight:600; color:var(--accent); margin-bottom:.8rem; }
+  table { width:100%; border-collapse:collapse; font-size:.84rem; }
+  th { text-align:left; color:var(--muted); font-weight:500; padding:.48rem .75rem; border-bottom:1px solid var(--border); }
+  td { padding:.58rem .75rem; border-bottom:1px solid var(--border); vertical-align:middle; }
+  tr:last-child td { border-bottom:none; }
+  .badge { display:inline-block; padding:.16rem .52rem; border-radius:99px; font-size:.7rem; font-weight:600; }
+  .badge-success { background:rgba(34,197,94,.15); color:var(--correct); }
+  .badge-running { background:rgba(56,189,248,.15); color:var(--accent); }
+  .badge-failed  { background:rgba(239,68,68,.15); color:var(--wrong); }
+
+  .empty { text-align:center; color:var(--muted); padding:2rem; font-size:.88rem; }
+  .ins-preview { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--muted); font-size:.76rem; }
+  .ins-full {
+    display:none; background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+    padding:.85rem 1rem; margin-top:.4rem; font-size:.8rem; color:var(--text);
+    line-height:1.7; white-space:pre-wrap; word-break:break-word;
+  }
+  .btn-exp {
+    padding:.22rem .55rem; border-radius:6px; font-size:.72rem; font-weight:600;
+    cursor:pointer; border:1px solid var(--border); background:var(--bg3);
+    color:var(--muted); white-space:nowrap; transition:all .15s;
+  }
+  .btn-exp:hover { border-color:var(--accent); color:var(--accent); }
+
+  /* lightbox */
+  #lb { position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:300; display:none; align-items:center; justify-content:center; cursor:zoom-out; }
+  #lb img { max-width:95vw; max-height:92vh; border-radius:8px; }
+
+  /* toast */
+  .toast {
+    position:fixed; bottom:1.5rem; right:1.5rem; background:var(--bg3);
+    border:1px solid var(--border); border-radius:10px; padding:.7rem 1.1rem;
+    font-size:.86rem; opacity:0; transition:opacity .3s; pointer-events:none; z-index:200;
+  }
+  .toast.show { opacity:1; }
+  .toast.ok  { border-color:var(--correct); color:var(--correct); }
+  .toast.err { border-color:var(--wrong);   color:var(--wrong); }
+  .toast.warn { border-color:var(--warn); color:var(--warn); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>D2SlideOS</h1>
+  <div class="h-right">
+    <div class="session-dot" id="sessionDot">
+      <span class="dot"></span><span id="sessionLabel">检查会话...</span>
+    </div>
+    <button class="btn btn-primary btn-sm" id="loginBtn" onclick="showLoginModal()">登录 SAC</button>
+    <button class="btn btn-danger btn-sm" id="logoutBtn" onclick="clearSession()" style="display:none">退出登录</button>
+    <button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted)" onclick="openAddressBook()" title="通讯录 / 报表库">📋</button>
+  </div>
+</header>
+
+<main>
+  <div id="setupBanner" style="margin-bottom:1.5rem">
+    <div style="background:var(--bg2);border:1px solid var(--warn);border-radius:12px;padding:1.3rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:.85rem;font-weight:600;color:var(--warn);margin-bottom:.4rem">⚠ 尚未登录 SAC 系统</div>
+        <div style="font-size:.76rem;color:var(--muted);line-height:1.6">登录一次即可运行所有报表任务，SAP 单点登录覆盖整个系统，无需重复登录。</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem;flex:1;min-width:300px">
+        <input id="sacBaseUrl" placeholder="SAC 系统地址" value="https://analytics-cn.cn40.analytics.sapcloud.cn"
+               style="flex:1;padding:.5rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.82rem;outline:none">
+      </div>
+    </div>
+  </div>
+
+  <div id="taskGrid">
+    <div class="task-card create-card" onclick="openModal()">
+      <div class="cc-icon">＋</div>
+      <div class="cc-label">创建新任务</div>
+    </div>
+  </div>
+
+  <div id="histSec">
+    <h2>运行历史</h2>
+    <div id="histTable"><div class="empty">暂无记录</div></div>
+  </div>
+</main>
+
+<!-- Modal -->
+<div class="modal-back" id="modal" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <h2>创建报表任务</h2>
+
+    <div class="field" style="background:var(--bg3);border:1px solid var(--accent);border-radius:10px;padding:.9rem 1rem;margin-bottom:.2rem">
+      <label style="color:var(--accent)">✨ 自然语言创建 <span style="color:var(--muted);font-weight:400">（可选，AI 自动填表）</span></label>
+      <div style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem">
+        <input id="fNlText" placeholder='例："每周一帮我分析销售报表发给Fiona"' style="flex:1">
+        <button class="btn btn-primary btn-sm" onclick="nlParseTask()" id="nlParseBtn">AI 解析</button>
+      </div>
+      <div id="nlParseStatus" style="font-size:.75rem;margin-top:.35rem;display:none"></div>
+    </div>
+
+    <div class="field">
+      <label>任务名称</label>
+      <input id="fName" placeholder="例：5月销售周报">
+    </div>
+
+    <div class="field">
+      <label>数据来源</label>
+      <div class="pill-row" id="fSourceRow">
+        <button class="p-btn active" onclick="setSource('screenshot',this)">📸 SAC Story 截图</button>
+        <button class="p-btn" onclick="setSource('upload',this)">📁 上传 CSV / Excel</button>
+        <button class="p-btn" onclick="setSource('sac',this)">🔗 SAC 模型</button>
+      </div>
+    </div>
+
+    <div class="field" id="fSacField" style="display:none">
+      <label>SAC 模型</label>
+      <select id="fSacModel"
+        style="width:100%;padding:.58rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.87rem;outline:none">
+        <option value="">-- 加载中... --</option>
+      </select>
+      <p class="hint">选择后 ID 自动填入，无需手动输入。</p>
+    </div>
+
+    <div class="field" id="fUrlField">
+      <label>报表网址（SAC Story URL）</label>
+      <input id="fUrl" placeholder="https://analytics-cn.cn40.analytics.sapcloud.cn/sap/fpa/ui/app.html#/story2&/s2/...">
+      <p class="hint">程序会自动打开这个页面截图。首次运行时会弹出浏览器请你登录，之后全自动。</p>
+    </div>
+
+    <!-- 筛选器个性化分发 -->
+    <div id="fFilterSection" class="field" style="display:none;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem">
+      <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;user-select:none">
+        <input type="checkbox" id="fFilterEnabled" onchange="toggleFilterSection(this.checked)">
+        <span style="font-size:.83rem;font-weight:600;color:var(--text)">启用筛选器分发</span>
+        <span style="font-size:.75rem;color:var(--muted);font-weight:400">（不同筛选值发给不同收件人）</span>
+      </label>
+      <div id="fFilterBody" style="display:none;margin-top:.8rem">
+        <div class="field" style="margin-bottom:.6rem">
+          <label>筛选字段名</label>
+          <input id="fFilterField" placeholder="SAC Story 里筛选器的显示名称，如：Region、大区、部门">
+        </div>
+        <div style="font-size:.76rem;color:var(--muted);margin-bottom:.4rem">筛选值 → 收件人邮箱</div>
+        <div id="fFilterRows"></div>
+        <button type="button" onclick="addFilterRow()" style="font-size:.78rem;color:var(--accent);background:none;border:1px dashed rgba(56,189,248,.4);border-radius:6px;padding:.28rem .7rem;cursor:pointer;margin-top:.4rem">＋ 添加一行</button>
+      </div>
+    </div>
+
+    <div class="field" id="fUploadField" style="display:none">
+      <label>上传文件（CSV / Excel）</label>
+      <input type="file" id="fFile" accept=".csv,.xlsx,.xls"
+        style="width:100%;padding:.52rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.87rem;outline:none">
+      <p class="hint">支持 .csv / .xlsx / .xls，AI 会自动分析表格数据并生成 PPT。</p>
+    </div>
+
+    <div class="field">
+      <label>定时调度 <span style="color:var(--muted);font-weight:400">（留空 = 只手动运行）</span></label>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input id="fScheduleText" placeholder="例：每周一早上9点、每天下午3点半..." style="flex:1"
+          oninput="scheduleInputTimer(this.value)">
+        <button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted);white-space:nowrap" onclick="parseSchedule()">解析</button>
+      </div>
+      <div id="fSchedulePreview" style="margin-top:.4rem;font-size:.75rem;display:none">
+        <span id="fScheduleDesc" style="color:var(--correct)"></span>
+        <span id="fScheduleCron" style="color:var(--muted);margin-left:.5rem"></span>
+      </div>
+      <input type="hidden" id="fSchedule">
+    </div>
+
+    <div class="field" id="fRecipientsField">
+      <label>发送邮箱 <span style="color:var(--muted);font-weight:400">（逗号分隔，可留空）</span></label>
+      <input id="fRecipients" placeholder="a@sap.com, b@sap.com">
+    </div>
+
+    <div class="field">
+      <label>邮件正文 <span style="color:var(--muted);font-weight:400">（可留空，留空使用默认模板）</span></label>
+      <textarea id="fEmailBody" placeholder="您好，请查收本周销售报告，如有疑问请联系..." rows="4"
+        style="width:100%;padding:.58rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.87rem;outline:none;resize:vertical;font-family:inherit"></textarea>
+      <p class="hint">AI 分析摘要和 PPT 附件会自动附上，无需手动添加。</p>
+    </div>
+
+    <div class="field">
+      <label>📊 图表描述 <span style="color:var(--muted);font-weight:400">（可留空，留空使用自动图表）</span></label>
+      <textarea id="fChartPrompt" placeholder="用自然语言描述你想要的图表，例如：画各区域的每日营收柱状图，按 Region 分组，突出显示 HK 区域" rows="3"
+        style="width:100%;padding:.58rem .8rem;background:var(--bg3);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.87rem;outline:none;resize:vertical;font-family:inherit"></textarea>
+      <p class="hint">AI 会根据描述自动生成图表，无需编程。</p>
+    </div>
+
+    <div class="field">
+      <label>AI 模型</label>
+      <div class="pill-row" id="fModels"></div>
+    </div>
+
+    <div class="field">
+      <label>报告语言</label>
+      <div class="pill-row">
+        <button class="p-btn active" id="fZh" onclick="setLang('zh',this)">中文</button>
+        <button class="p-btn" id="fEn" onclick="setLang('en',this)">English</button>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn" style="border:1px solid var(--border);color:var(--muted)" onclick="closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="saveTask()">保存任务</button>
+    </div>
+  </div>
+</div>
+
+<!-- Address Book Modal -->
+<div class="modal-back" id="abModal" style="display:none" onclick="if(event.target===this)closeAB()">
+  <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto">
+    <h2>📋 通讯录 / 报表库</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div>
+        <div style="font-size:.85rem;font-weight:700;color:var(--accent);margin-bottom:.7rem">联系人</div>
+        <div id="abContacts" style="margin-bottom:.8rem"></div>
+        <div style="display:flex;gap:.4rem">
+          <input id="abCName" placeholder="姓名" style="flex:1;min-width:0">
+          <input id="abCEmail" placeholder="邮箱" style="flex:1.5;min-width:0">
+          <button class="btn btn-primary btn-sm" onclick="addContact()">添加</button>
+        </div>
+      </div>
+      <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem">
+          <div style="font-size:.85rem;font-weight:700;color:var(--accent)">报表库</div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.3rem">
+            <button id="syncBtn" class="btn btn-sm" style="font-size:.78rem;padding:.25rem .6rem;border:1px solid var(--accent);color:var(--accent)" onclick="syncSacModels()">🔄 同步 SAC 模型</button>
+            <div id="syncProgress" style="display:none;width:160px">
+              <div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden">
+                <div id="syncBar" style="height:100%;width:0%;background:var(--accent);border-radius:2px;transition:width .3s ease"></div>
+              </div>
+              <div id="syncLabel" style="font-size:.7rem;color:var(--muted);margin-top:.2rem;text-align:right"></div>
+            </div>
+          </div>
+        </div>
+        <div id="abReports" style="margin-bottom:.8rem"></div>
+        <div style="display:flex;flex-direction:column;gap:.4rem">
+          <input id="abRName" placeholder="报表名称（如：销售报表）">
+          <input id="abRUrl" placeholder="SAC Story URL">
+          <button class="btn btn-primary btn-sm" onclick="addReportAlias()">添加</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:1rem">
+      <button class="btn" style="border:1px solid var(--border);color:var(--muted)" onclick="closeAB()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Login modal -->
+<div class="modal-back" id="loginModal" style="display:none">
+  <div class="modal">
+    <h2>连接 SAC 系统</h2>
+    <p style="font-size:.85rem;color:var(--muted);line-height:1.7;margin-bottom:1.2rem">
+      使用 OAuth Client Credentials 自动连接 SAC。<br>
+      <strong style="color:var(--text)">无需手动登录，点击连接即可。</strong>
+    </p>
+    <div style="display:flex;gap:.6rem">
+      <button class="btn btn-primary" id="loginStartBtn" onclick="startLogin()">连接</button>
+      <button class="btn" style="border:1px solid var(--border);color:var(--muted)" onclick="cancelLogin()">取消</button>
+    </div>
+  </div>
+</div>
+
+<div id="lb" onclick="this.style.display='none'"><img id="lbImg"></div>
+<div class="toast" id="toast"></div>
+
+<!-- Contact picker popup -->
+<div id="cpPop" style="display:none;position:fixed;z-index:500;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.7rem;min-width:220px;box-shadow:0 8px 24px rgba(0,0,0,.5)">
+  <div style="font-size:.78rem;color:var(--muted);margin-bottom:.5rem">选择联系人</div>
+  <div id="cpList"></div>
+  <div style="margin-top:.5rem;padding-top:.5rem;border-top:1px solid var(--border)">
+    <button onclick="closeCp()" style="font-size:.76rem;color:var(--muted);background:none;border:none;cursor:pointer">关闭</button>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const MODELS = [
+  {id:"gpt-4o-mini",  label:"GPT-4o mini",  prov:"OpenAI"},
+  {id:"gpt-4o",       label:"GPT-4o",        prov:"OpenAI"},
+  {id:"anthropic--claude-4.6-sonnet", label:"Claude 4.6", prov:"Anthropic"},
+  {id:"anthropic--claude-3.5-sonnet", label:"Claude 3.5", prov:"Anthropic"},
+];
+
+let _fLang = "zh", _fModel = "gpt-4o-mini", _fSource = "screenshot";
+let _fFilterMappings = [];   // [{value:"North", email:"north@sap.com"}, ...]
+let _pendingRunJobId = null;   // job waiting for login before run
+let _hasSession = false;
+
+async function api(path, opts={}) {
+  const r = await fetch(path, {headers:{"Content-Type":"application/json"}, ...opts});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+function toast(msg, type="ok") {
+  const el = $("toast"); el.textContent = msg;
+  el.className = `toast show ${type}`;
+  setTimeout(() => el.classList.remove("show"), 3500);
+}
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtDate(s) {
+  if (!s) return "—";
+  return new Date(s+"Z").toLocaleString("zh-CN",{hour12:false,timeZone:"Asia/Shanghai"});
+}
+
+// ── Session status (header indicator) ──
+async async function checkSession() {
+  try {
+    const { connected } = await api("/api/sac/status");
+    _hasSession = connected;
+    $("sessionDot").className = "session-dot" + (connected ? " ok" : "");
+    $("sessionLabel").textContent = connected ? "SAC 已连接" : "未登录";
+    $("loginBtn").style.display = connected ? "none" : "";
+    $("logoutBtn").style.display = connected ? "" : "none";
+    $("setupBanner").style.display = connected ? "none" : "";
+  } catch(e) {
+    $("sessionLabel").textContent = "未登录";
+    $("loginBtn").style.display = "";
+    $("logoutBtn").style.display = "none";
+    $("setupBanner").style.display = "";
+  }
+}
+async async function clearSession() {
+  if (!confirm("退出登录后，下次运行任务需要重新登录。确认？")) return;
+  try { await api("/api/rpa/logout", {method:"POST"}); } catch(e) {}
+  toast("已退出登录","warn");
+  checkSession();
+}
+
+// ── Modal ──
+function openModal() {
+  _fLang = "zh"; _fModel = "gpt-4o-mini";
+  $("fName").value=""; $("fUrl").value=""; $("fSchedule").value=""; $("fScheduleText").value=""; $("fSchedulePreview").style.display="none"; $("fRecipients").value=""; $("fEmailBody").value=""; $("fChartPrompt").value="";
+  $("fNlText").value=""; $("nlParseStatus").style.display="none";
+  _fSource="screenshot"; $("fUrlField").style.display=""; $("fUploadField").style.display="none"; $("fSacField").style.display="none";
+  $("fFilterSection").style.display="";
+  $("fFilterEnabled").checked=false; $("fFilterBody").style.display="none";
+  $("fFilterField").value=""; _fFilterMappings=[];  renderFilterRows();
+  $("fRecipientsField").style.display="";
+  document.querySelectorAll("#fSourceRow .p-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
+  renderModels(); renderLang();
+  $("modal").style.display="flex";
+  setTimeout(()=>$("fName").focus(),50);
+}
+function closeModal() { $("modal").style.display="none"; }
+
+// ── Address Book ──
+async function openAddressBook() {
+  $("abModal").style.display="flex";
+  await refreshAB();
+}
+function closeAB() { $("abModal").style.display="none"; }
+
+async function refreshAB() {
+  const [contacts, reports] = await Promise.all([
+    api("/api/contacts"), api("/api/report-aliases")
+  ]);
+  $("abContacts").innerHTML = contacts.length ? contacts.map(c=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.35rem .5rem;background:var(--bg2);border-radius:6px;margin-bottom:.3rem;font-size:.82rem">
+      <span><b>${c.name}</b> <span style="color:var(--muted)">${c.email}</span></span>
+      <button onclick="deleteContact(${c.id})" style="background:none;border:none;color:var(--wrong);cursor:pointer;font-size:.9rem">✕</button>
+    </div>`).join("") : '<div style="color:var(--muted);font-size:.8rem">暂无联系人</div>';
+  $("abReports").innerHTML = reports.length ? reports.map(r=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.35rem .5rem;background:var(--bg2);border-radius:6px;margin-bottom:.3rem;font-size:.82rem">
+      <span><b>${r.name}</b> <span style="color:var(--muted);font-size:.75rem">[${r.source}]</span></span>
+      <button onclick="deleteReportAlias(${r.id})" style="background:none;border:none;color:var(--wrong);cursor:pointer;font-size:.9rem">✕</button>
+    </div>`).join("") : '<div style="color:var(--muted);font-size:.8rem">暂无报表</div>';
+}
+
+async function syncSacModels() {
+  const btn = document.getElementById("syncBtn");
+  const prog = document.getElementById("syncProgress");
+  const bar = document.getElementById("syncBar");
+  const label = document.getElementById("syncLabel");
+
+  btn.disabled = true;
+  btn.textContent = "同步中...";
+  prog.style.display = "block";
+  bar.style.width = "0%";
+
+  let pct = 0;
+  function setProgress(p, text) {
+    pct = p;
+    bar.style.width = p + "%";
+    label.textContent = text;
+  }
+
+  setProgress(10, "连接 SAC...");
+  const ticker = setInterval(() => {
+    if (pct < 80) setProgress(pct + 2, pct < 30 ? "拉取模型列表..." : "AI 生成中文别名...");
+  }, 600);
+
+  try {
+    const res = await api("/api/sac/sync-models", {method:"POST"});
+    clearInterval(ticker);
+    setProgress(100, `完成：共 ${res.total} 个模型`);
+    setTimeout(() => { prog.style.display = "none"; }, 2000);
+    toast(`同步完成：${res.total} 个 SAC 模型`);
+    await refreshAB();
+    await _loadSacModels();
+  } catch(e) {
+    clearInterval(ticker);
+    setProgress(pct, "同步失败");
+    bar.style.background = "var(--wrong)";
+    setTimeout(() => { prog.style.display = "none"; bar.style.background = "var(--accent)"; }, 2500);
+    toast("同步失败: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔄 同步 SAC 模型";
+  }
+}
+
+async function addContact() {
+  const name=$("abCName").value.trim(), email=$("abCEmail").value.trim();
+  if (!name||!email) { toast("请填写姓名和邮箱","err"); return; }
+  await api("/api/contacts",{method:"POST",body:JSON.stringify({name,email})});
+  $("abCName").value=""; $("abCEmail").value="";
+  await refreshAB();
+  toast("联系人已添加");
+}
+
+async function deleteContact(id) {
+  await api("/api/contacts/"+id,{method:"DELETE"});
+  await refreshAB();
+}
+
+async function addReportAlias() {
+  const name=$("abRName").value.trim(), url=$("abRUrl").value.trim();
+  if (!name||!url) { toast("请填写报表名称和URL","err"); return; }
+  await api("/api/report-aliases",{method:"POST",body:JSON.stringify({name,url,source:"screenshot"})});
+  $("abRName").value=""; $("abRUrl").value="";
+  await refreshAB();
+  toast("报表已添加");
+}
+
+async function deleteReportAlias(id) {
+  await api("/api/report-aliases/"+id,{method:"DELETE"});
+  await refreshAB();
+}
+
+// ── NL Task Parse ──
+async function nlParseTask() {
+  const text=$("fNlText").value.trim();
+  if (!text) { toast("请输入任务描述","err"); return; }
+  const btn=$("nlParseBtn"), status=$("nlParseStatus");
+  btn.disabled=true; btn.textContent="解析中...";
+  status.style.display=""; status.style.color="var(--muted)"; status.textContent="AI 正在解析...";
+  try {
+    const r = await api("/api/jobs/parse-text",{method:"POST",body:JSON.stringify({text})});
+    if (r.name) $("fName").value=r.name;
+    if (r.ambiguous && r.candidates && r.candidates.length > 0) {
+      status.style.color="var(--java)";
+      status.textContent=`⚠️ 找到多个匹配：${r.candidates.join("、")}，请在下方手动选择模型`;
+      setSource("sac"); // switch to sac tab so user can pick
+    } else if (r.report_url) {
+      if (r.report_source === "sac") {
+        setSource("sac");
+        await _loadSacModels();
+        $("fSacModel").value = r.report_url;
+      } else {
+        $("fUrl").value=r.report_url;
+        setSource(r.report_source||"screenshot");
+      }
+    }
+    if (r.recipients) $("fRecipients").value=r.recipients;
+    if (r.email_body) $("fEmailBody").value=r.email_body;
+    if (r.chart_prompt) $("fChartPrompt").value=r.chart_prompt;
+    if (r.lang) { _fLang=r.lang; $("fZh").classList.toggle("active",r.lang==="zh"); $("fEn").classList.toggle("active",r.lang==="en"); }
+    if (r.cron) {
+      $("fSchedule").value=r.cron;
+      $("fScheduleText").value=r.schedule_text||"";
+      $("fScheduleDesc").textContent=r.cron_description||r.cron;
+      $("fScheduleCron").textContent=r.cron;
+      $("fSchedulePreview").style.display="";
+    }
+    if (!r.ambiguous) {
+      status.style.color="var(--correct)"; status.textContent="✓ 解析成功，请确认下方字段";
+    }
+  } catch(e) {
+    status.style.color="var(--wrong)"; status.textContent="解析失败: "+e.message;
+  } finally {
+    btn.disabled=false; btn.textContent="AI 解析";
+  }
+}
+
+function renderModels() {
+  $("fModels").innerHTML = MODELS.map(m=>`
+    <button class="p-btn ${m.id===_fModel?'active':''}" onclick="setModel('${m.id}',this)">
+      <span class="prov">${m.prov}</span>${m.label}
+    </button>`).join("");
+}
+function renderLang() {
+  $("fZh").classList.toggle("active",_fLang==="zh");
+  $("fEn").classList.toggle("active",_fLang==="en");
+}
+function setModel(id,btn) {
+  _fModel=id;
+  document.querySelectorAll("#fModels .p-btn").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+}
+function setLang(l,btn) { _fLang=l; renderLang(); }
+let _scheduleTimer = null;
+function scheduleInputTimer(val) {
+  clearTimeout(_scheduleTimer);
+  if (!val.trim()) {
+    $("fSchedule").value = "";
+    $("fSchedulePreview").style.display = "none";
+    return;
+  }
+  _scheduleTimer = setTimeout(() => parseSchedule(), 800);
+}
+
+async function parseSchedule() {
+  const text = $("fScheduleText").value.trim();
+  if (!text) return;
+  try {
+    const r = await api("/api/schedule/parse", {method:"POST", body:JSON.stringify({text})});
+    $("fSchedule").value = r.cron;
+    $("fScheduleDesc").textContent = r.description;
+    $("fScheduleCron").textContent = "(" + r.cron + ")";
+    $("fSchedulePreview").style.display = "";
+  } catch(e) {
+    $("fScheduleDesc").textContent = "无法解析，请换一种说法";
+    $("fScheduleDesc").style.color = "var(--wrong)";
+    $("fScheduleCron").textContent = "";
+    $("fSchedulePreview").style.display = "";
+    $("fSchedule").value = "";
+  }
+}
+
+function setSource(s,btn) {
+  _fSource=s;
+  document.querySelectorAll("#fSourceRow .p-btn").forEach(b=>b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  $("fUrlField").style.display = s==="screenshot" ? "" : "none";
+  $("fUploadField").style.display = s==="upload" ? "" : "none";
+  $("fSacField").style.display = s==="sac" ? "" : "none";
+  $("fFilterSection").style.display = s==="screenshot" ? "" : "none";
+  if (s!=="screenshot") { $("fFilterEnabled").checked=false; $("fFilterBody").style.display="none"; $("fRecipientsField").style.display=""; }
+  if (s==="sac") _loadSacModels();
+}
+
+async function _loadSacModels() {
+  const sel = $("fSacModel");
+  sel.innerHTML = '<option value="">-- 加载中... --</option>';
+  try {
+    const reports = await api("/api/report-aliases");
+    const sacModels = reports.filter(r => r.source === "sac");
+    if (sacModels.length === 0) {
+      sel.innerHTML = '<option value="">-- 请先在报表库同步 SAC 模型 --</option>';
+    } else {
+      sel.innerHTML = '<option value="">-- 请选择模型 --</option>' +
+        sacModels.map(r => `<option value="${r.url}">${r.name}</option>`).join('');
+    }
+  } catch(e) {
+    sel.innerHTML = '<option value="">-- 加载失败 --</option>';
+    toast("模型列表加载失败: " + e.message, "err");
+  }
+}
+
+function toggleFilterSection(checked) {
+  $("fFilterBody").style.display = checked ? "" : "none";
+  $("fRecipientsField").style.display = checked ? "none" : "";
+}
+
+function renderFilterRows(containerId) {
+  const cid = containerId || "fFilterRows";
+  const mappings = cid === "fFilterRows" ? _fFilterMappings : _getCardMappings(cid);
+  const el = $(cid);
+  if (!el) return;
+  el.innerHTML = mappings.map((m,i)=>`
+    <div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.35rem;position:relative">
+      <input placeholder="筛选值（如：North）" value="${esc(m.value||"")}"
+        oninput="_updateFilterRow('${cid}',${i},'value',this.value)"
+        style="flex:1;padding:.35rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.81rem;outline:none">
+      <input id="fer-${cid}-${i}" placeholder="收件人邮箱" value="${esc(m.email||"")}"
+        oninput="_updateFilterRow('${cid}',${i},'email',this.value)"
+        style="flex:1.5;padding:.35rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.81rem;outline:none">
+      <button onclick="openContactPicker('${cid}',${i})" title="从通讯录选择"
+        style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--accent);cursor:pointer;padding:.3rem .45rem;font-size:.8rem;flex-shrink:0">📋</button>
+      <button onclick="removeFilterRow('${cid}',${i})" style="background:none;border:none;color:var(--wrong);cursor:pointer;font-size:.9rem;padding:.2rem;flex-shrink:0">✕</button>
+    </div>`).join("");
+}
+function _updateFilterRow(cid, i, key, val) {
+  const mappings = cid === "fFilterRows" ? _fFilterMappings : _getCardMappings(cid);
+  if (mappings[i]) mappings[i][key] = val;
+}
+function addFilterRow(containerId) {
+  const cid = containerId || "fFilterRows";
+  const mappings = cid === "fFilterRows" ? _fFilterMappings : _getCardMappings(cid);
+  mappings.push({value:"",email:""});
+  renderFilterRows(cid);
+}
+function removeFilterRow(cid, i) {
+  const mappings = cid === "fFilterRows" ? _fFilterMappings : _getCardMappings(cid);
+  mappings.splice(i,1);
+  renderFilterRows(cid);
+}
+// per-card mapping store: keyed by "fmr-{jobId}"
+const _cardMappings = {};
+function _getCardMappings(cid) {
+  if (!_cardMappings[cid]) _cardMappings[cid] = [];
+  return _cardMappings[cid];
+}
+
+// ── Contact picker popup ──
+let _cpCid = null, _cpIdx = null;
+
+async function openContactPicker(cid, idx) {
+  _cpCid = cid; _cpIdx = idx;
+  const contacts = await api("/api/contacts");
+  const pop = $("cpPop");
+  if (!contacts.length) {
+    $("cpList").innerHTML = '<div style="font-size:.8rem;color:var(--muted)">通讯录为空，请先在 📋 里添加联系人</div>';
+  } else {
+    $("cpList").innerHTML = contacts.map(c=>`
+      <div onclick="pickContact('${esc(c.email)}')"
+        style="padding:.35rem .5rem;border-radius:6px;cursor:pointer;font-size:.82rem;display:flex;flex-direction:column;gap:.1rem"
+        onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+        <span style="color:var(--text);font-weight:600">${esc(c.name)}</span>
+        <span style="color:var(--muted);font-size:.75rem">${esc(c.email)}</span>
+      </div>`).join("");
+  }
+  // position near the 📋 button
+  const btn = document.querySelector(`#fer-${cid}-${idx}`)?.nextElementSibling;
+  const rect = btn ? btn.getBoundingClientRect() : {left:200, bottom:200};
+  pop.style.left = Math.min(rect.left, window.innerWidth - 240) + "px";
+  pop.style.top = (rect.bottom + 6) + "px";
+  pop.style.display = "";
+}
+
+function pickContact(email) {
+  if (_cpCid === null) return;
+  const mappings = _cpCid === "fFilterRows" ? _fFilterMappings : _getCardMappings(_cpCid);
+  if (mappings[_cpIdx]) {
+    mappings[_cpIdx].email = email;
+    renderFilterRows(_cpCid);
+  }
+  closeCp();
+}
+
+function closeCp() {
+  $("cpPop").style.display = "none";
+  _cpCid = null; _cpIdx = null;
+}
+
+// Close picker when clicking outside
+document.addEventListener("click", e => {
+  const pop = $("cpPop");
+  if (pop && pop.style.display !== "none" && !pop.contains(e.target) && !e.target.closest("[onclick*='openContactPicker']")) {
+    closeCp();
+  }
+});
+
+async function saveTask() {
+  const name=$("fName").value.trim();
+  if (!name) { toast("请填写任务名称","err"); return; }
+
+  let report_type = "";
+  if (_fSource === "upload") {
+    const file = $("fFile").files[0];
+    if (!file) { toast("请选择上传文件","err"); return; }
+    const fd = new FormData(); fd.append("file", file);
+    try {
+      const r = await fetch("/api/upload", {method:"POST", body:fd});
+      if (!r.ok) throw new Error(await r.text());
+      const j = await r.json();
+      report_type = j.path;
+    } catch(e) { toast("上传失败: "+e.message,"err"); return; }
+  } else if (_fSource === "sac") {
+    report_type = $("fSacModel").value;
+    if (!report_type) { toast("请选择 SAC 模型","err"); return; }
+  } else {
+    report_type = $("fUrl").value.trim();
+    if (!report_type) { toast("请填写报表网址","err"); return; }
+  }
+
+  try {
+    // auto-parse schedule if user typed text but didn't click 解析
+    const schedText = $("fScheduleText").value.trim();
+    let schedCron = $("fSchedule").value.trim();
+    if (schedText && !schedCron) {
+      try {
+        const p = await api("/api/schedule/parse", {method:"POST", body:JSON.stringify({text:schedText})});
+        schedCron = p.cron;
+        $("fSchedule").value = schedCron;
+      } catch(e) { toast("调度时间解析失败，请重新输入","err"); return; }
+    }
+    const filterField = $("fFilterEnabled").checked ? ($("fFilterField").value.trim()) : "";
+    const filterMappings = $("fFilterEnabled").checked ? JSON.stringify(_fFilterMappings.filter(m=>m.value||m.email)) : "[]";
+    await api("/api/jobs",{method:"POST",body:JSON.stringify({
+      name, report_type, source:_fSource,
+      lang:_fLang, model:_fModel,
+      recipients:$("fRecipients").value.trim(),
+      schedule:schedCron,
+      email_body:$("fEmailBody").value.trim(),
+      chart_prompt:$("fChartPrompt").value.trim(),
+      filter_field: filterField,
+      filter_mappings: filterMappings,
+    })});
+    toast("任务已创建"); closeModal(); refresh();
+  } catch(e) { toast("创建失败: "+e.message,"err"); }
+}
+
+// ── Task cards ──
+function renderTasks(jobs) {
+  const modelLabel = id => (MODELS.find(m=>m.id===id)||{label:id||"GPT-4o mini"}).label;
+  const cards = jobs.map(j=>`
+    <div class="task-card" id="tc-${j.id}">
+      <div class="tc-header" style="cursor:pointer" onclick="toggleCard(${j.id})">
+        <div class="tc-name">${esc(j.name)}</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <div class="tc-pill">${j.lang==="zh"?"中文":"EN"} · ${modelLabel(j.model).split(" ")[0]}</div>
+          <span id="tc-arrow-${j.id}" style="color:var(--muted);font-size:.75rem">▼</span>
+        </div>
+      </div>
+      <div class="tc-url" title="${esc(j.report_type)}">${esc(j.report_type.replace(/^https?:\/\//,""))}</div>
+      <div class="tc-meta">
+        <span>⏱ ${esc(j.schedule||"手动运行")}</span>
+        ${j.recipients?`<span>✉ ${esc(j.recipients)}</span>`:""}
+      </div>
+      <div id="tc-detail-${j.id}" style="display:none;margin-top:.6rem;border-top:1px solid var(--border);padding-top:.8rem">
+        <div style="display:flex;flex-direction:column;gap:.55rem">
+          <div><label style="font-size:.72rem;color:var(--muted)">任务名称</label>
+            <input id="te-name-${j.id}" value="${esc(j.name)}" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">报表地址 / 文件路径</label>
+            <input id="te-url-${j.id}" value="${esc(j.report_type)}" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">定时调度（cron，留空=手动）</label>
+            <input id="te-sched-${j.id}" value="${esc(j.schedule||"")}" placeholder="0 9 * * 1" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">收件人邮箱（逗号分隔）</label>
+            <input id="te-rcpt-${j.id}" value="${esc(j.recipients||"")}" placeholder="a@sap.com, b@qq.com" style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none"></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">邮件正文（留空用默认）</label>
+            <textarea id="te-body-${j.id}" rows="2" placeholder="自定义邮件正文..." style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none;resize:vertical">${esc(j.email_body||"")}</textarea></div>
+          <div><label style="font-size:.72rem;color:var(--muted)">📊 图表描述（留空用自动图表）</label>
+            <textarea id="te-chart-${j.id}" rows="2" placeholder="画各区域营收柱状图..." style="width:100%;margin-top:.2rem;padding:.4rem .6rem;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.82rem;outline:none;resize:vertical">${esc(j.chart_prompt||"")}</textarea></div>
+          ${(j.source||'screenshot')==='screenshot' ? `
+          <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.7rem .8rem;margin-top:.3rem">
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.78rem">
+              <input type="checkbox" id="te-filter-enabled-${j.id}" ${j.filter_mappings && j.filter_mappings!=='[]' ? 'checked' : ''} onchange="toggleCardFilter(${j.id},this.checked)">
+              <span style="font-weight:600;color:var(--text)">筛选器分发</span>
+            </label>
+            <div id="te-filter-body-${j.id}" style="display:${j.filter_mappings && j.filter_mappings!=='[]' ? '' : 'none'};margin-top:.6rem">
+              <input id="te-filter-field-${j.id}" value="${esc(j.filter_field||"")}" placeholder="筛选字段名（如：Region）"
+                style="width:100%;margin-bottom:.5rem;padding:.35rem .6rem;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:.8rem;outline:none">
+              <div style="font-size:.73rem;color:var(--muted);margin-bottom:.35rem">筛选值 → 收件人</div>
+              <div id="fmr-${j.id}"></div>
+              <button type="button" onclick="addFilterRow('fmr-${j.id}')" style="font-size:.76rem;color:var(--accent);background:none;border:1px dashed rgba(56,189,248,.4);border-radius:6px;padding:.22rem .6rem;cursor:pointer;margin-top:.3rem">＋ 添加</button>
+            </div>
+          </div>` : ''}
+          <div style="display:flex;gap:.4rem;justify-content:flex-end">
+            <button class="btn btn-primary btn-sm" onclick="saveCardEdit(${j.id},'${j.source||'screenshot'}','${j.lang||'zh'}','${j.model||'gpt-4o-mini'}')">保存修改</button>
+          </div>
+        </div>
+      </div>
+      <div class="tc-actions" style="margin-top:.6rem">
+        ${j.schedule
+          ? `<button class="btn btn-sm" style="border:1px solid var(--border);color:var(--muted)" onclick="runTask(${j.id},this)">▶ 立即运行</button>`
+          : `<button class="btn btn-run btn-sm" onclick="runTask(${j.id},this)">▶ 运行</button>`
+        }
+        <button class="btn btn-danger btn-sm" onclick="deleteTask(${j.id})">删除</button>
+      </div>
+    </div>`).join("");
+  $("taskGrid").innerHTML = cards + `
+    <div class="task-card create-card" onclick="openModal()">
+      <div class="cc-icon">＋</div><div class="cc-label">创建新任务</div>
+    </div>`;
+  // init per-card filter mappings from server data
+  jobs.forEach(j => {
+    const cid = `fmr-${j.id}`;
+    try {
+      _cardMappings[cid] = JSON.parse(j.filter_mappings || "[]");
+    } catch(e) {
+      _cardMappings[cid] = [];
+    }
+  });
+}
+
+function toggleCard(id) {
+  const detail = $(`tc-detail-${id}`);
+  const arrow = $(`tc-arrow-${id}`);
+  const open = detail.style.display === "block";
+  detail.style.display = open ? "none" : "block";
+  arrow.textContent = open ? "▼" : "▲";
+  // Render filter rows when card opens
+  if (!open) {
+    const cid = `fmr-${id}`;
+    if (_cardMappings[cid] && _cardMappings[cid].length) renderFilterRows(cid);
+  }
+}
+
+function toggleCardFilter(id, checked) {
+  const body = $(`te-filter-body-${id}`);
+  if (body) body.style.display = checked ? "" : "none";
+  if (checked) {
+    const cid = `fmr-${id}`;
+    if (!_cardMappings[cid] || !_cardMappings[cid].length) {
+      _cardMappings[cid] = [{value:"",email:""}];
+    }
+    renderFilterRows(cid);
+  }
+}
+
+async function saveCardEdit(id, source, lang, model) {
+  const name = $(`te-name-${id}`).value.trim();
+  const report_type = $(`te-url-${id}`).value.trim();
+  const schedule = $(`te-sched-${id}`).value.trim();
+  const recipients = $(`te-rcpt-${id}`).value.trim();
+  const email_body = $(`te-body-${id}`).value.trim();
+  const chart_prompt = $(`te-chart-${id}`) ? $(`te-chart-${id}`).value.trim() : "";
+  const filterEnabledEl = $(`te-filter-enabled-${id}`);
+  const filterEnabled = filterEnabledEl && filterEnabledEl.checked;
+  const filterFieldEl = $(`te-filter-field-${id}`);
+  const filter_field = filterEnabled && filterFieldEl ? filterFieldEl.value.trim() : "";
+  const cid = `fmr-${id}`;
+  const rawMappings = filterEnabled ? (_cardMappings[cid] || []).filter(m=>m.value||m.email) : [];
+  const filter_mappings = JSON.stringify(rawMappings);
+  if (!name || !report_type) { toast("名称和地址不能为空","err"); return; }
+  try {
+    await api(`/api/jobs/${id}`, {method:"PATCH", body:JSON.stringify({
+      name, report_type, schedule, recipients, email_body, source, lang, model,
+      filter_field, filter_mappings, chart_prompt,
+    })});
+    toast("已保存"); refresh();
+  } catch(e) { toast("保存失败: "+e.message,"err"); }
+}
+
+
+async function _doRun(id) {
+  await api(`/api/jobs/${id}/run`,{method:"POST"});
+  toast("已提交 — 截图和报告生成中...");
+  setTimeout(refreshHist,3000);
+  setTimeout(refreshHist,15000);
+}
+
+async function runTask(id, btn) {
+  btn.disabled=true; btn.textContent="准备中...";
+  try {
+    if (!_hasSession) {
+      _pendingRunJobId = id;
+      showLoginModal();
+      btn.disabled=false; btn.textContent="▶ 运行";
+      return;
+    }
+    await _doRun(id);
+  } catch(e) {
+    if (e.message.includes("SESSION_EXPIRED")) {
+      toast("登录已失效，请重新登录","warn");
+      _hasSession = false;
+      await checkSession();
+      _pendingRunJobId = id;
+      showLoginModal();
+    } else {
+      toast("运行失败: "+e.message,"err");
+    }
+  } finally {
+    btn.disabled=false; btn.textContent="▶ 运行";
+  }
+}
+
+// ── Login modal ──
+function showLoginModal() {
+  $("loginModal").style.display="flex";
+}
+
+async function startLogin() {
+  const btn = $("loginStartBtn");
+  btn.disabled=true; btn.textContent="连接中...";
+  try {
+    const r = await fetch("/api/sac/connect", {method:"POST", headers:{"Content-Type":"application/json"}});
+    if (!r.ok) throw new Error(await r.text());
+    toast("SAC 连接成功！","ok");
+    $("loginModal").style.display="none";
+    await checkSession();
+    if (_pendingRunJobId !== null) {
+      const jid = _pendingRunJobId; _pendingRunJobId = null;
+      await _doRun(jid);
+    }
+  } catch(e) { toast("连接失败: "+e.message,"err"); }
+  finally { btn.disabled=false; btn.textContent="连接"; }
+}
+function cancelLogin() { $("loginModal").style.display="none"; _pendingRunJobId=null; }
+
+async function deleteTask(id) {
+  if (!confirm("删除此任务？")) return;
+  await api(`/api/jobs/${id}`,{method:"DELETE"});
+  toast("已删除"); refresh();
+}
+
+// ── History ──
+function renderHist(runs) {
+  if (!runs.length) { $("histTable").innerHTML='<div class="empty">暂无记录</div>'; return; }
+  $("histTable").innerHTML = `<table>
+    <thead><tr><th>任务</th><th>状态</th><th>时间</th><th>截图 / AI 洞察</th><th>操作</th></tr></thead>
+    <tbody>${runs.map(r=>{
+      const ok = r.insights && r.status==="success";
+      const safe = ok ? esc(r.insights) : "";
+      return `<tr>
+        <td>${esc(r.job_name)}</td>
+        <td><span class="badge badge-${r.status}">${r.status}</span></td>
+        <td style="font-size:.76rem;color:var(--muted);white-space:nowrap">${fmtDate(r.started_at)}</td>
+        <td>
+          ${r.has_screenshot?`<img src="/api/history/${r.id}/screenshot" style="width:130px;height:74px;object-fit:cover;border-radius:6px;border:1px solid var(--border);cursor:pointer;display:block;margin-bottom:.4rem" onclick="openLb(${r.id})" title="点击放大">`:""}
+          <div style="display:flex;align-items:center;gap:.4rem">
+            <div class="ins-preview">${r.insights||(r.status==="running"?"生成中...":"—")}</div>
+            ${ok?`<button class="btn-exp" onclick="toggleIns(${r.id},this)">展开</button>`:""}
+          </div>
+          <div class="ins-full" id="ins-${r.id}">${safe}</div>
+        </td>
+        <td style="display:flex;gap:.35rem;flex-wrap:wrap">
+          ${r.file_path?`<a href="/api/history/${r.id}/download" class="btn btn-primary btn-sm" style="text-decoration:none">下载 PPT</a>`:""}
+          <button class="btn btn-danger btn-sm" onclick="delRun(${r.id})">删除</button>
+        </td>
+      </tr>`;
+    }).join("")}
+    </tbody></table>`;
+}
+
+function toggleIns(id,btn) {
+  const p=document.getElementById(`ins-${id}`), open=p.style.display==="block";
+  p.style.display=open?"none":"block"; btn.textContent=open?"展开":"收起";
+}
+function openLb(id) { $("lbImg").src=`/api/history/${id}/screenshot?t=${Date.now()}`; $("lb").style.display="flex"; }
+async function delRun(id) {
+  if (!confirm("删除此记录？")) return;
+  await api(`/api/history/${id}`,{method:"DELETE"});
+  toast("已删除"); refreshHist();
+}
+
+async function refresh() {
+  const [jobs,runs] = await Promise.all([api("/api/jobs"), api("/api/history")]);
+  renderTasks(jobs); renderHist(runs);
+}
+async function refreshHist() { renderHist(await api("/api/history")); }
+
+checkSession();
+refresh();
+setInterval(refreshHist, 10000);
+</script>
+</body>
+</html>

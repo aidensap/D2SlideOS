@@ -1,0 +1,22 @@
+applications:
+  - name: d2slideos
+    memory: 256M
+    disk_quota: 1G
+    instances: 1
+    buildpacks:
+      - python_buildpack
+    command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    env:
+      AICORE_AUTH_URL: ""
+      AICORE_CLIENT_ID: ""
+      AICORE_CLIENT_SECRET: ""
+      AICORE_BASE_URL: ""
+      AICORE_RESOURCE_GROUP: default
+      AI_MODEL: gpt-4o-mini
+      BW_MODE: mock
+      SAC_CLIENT_ID: ""
+      SAC_CLIENT_SECRET: ""
+      SAC_TOKEN_URL: ""
+      SAC_BASE_URL: ""
+      RESEND_API_KEY: ""
+      EMAIL_FROM: ""
