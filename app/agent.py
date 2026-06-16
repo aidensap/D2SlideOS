@@ -321,15 +321,18 @@ Return ONLY a JSON object with these fields:
 - "lang": "en" if user mentions English output, otherwise "zh"
 - "schedule_text": the schedule part, empty string if not mentioned
 - "report_name": matched report name, empty string if not found or ambiguous
-- "report_url": URL of matched report, empty string if not found or ambiguous
+- "report_url": MUST copy the exact URL/ID value from the matched report in the list above. Empty string only if not found or ambiguous.
 - "report_source": source type — MUST copy the source field from the matched report. Default "screenshot" only if no report matched
-- "ambiguous": true if multiple reports match the description (e.g. "国泰人寿" matches v1/v3/v4), false otherwise
+- "ambiguous": true ONLY if 2+ reports equally match and user did not specify which one. If the user specifies a version (e.g. "v1"), match exactly and set ambiguous=false.
 - "candidates": if ambiguous=true, list the matching report names so user can choose; otherwise empty list
 - "recipient_names": list of matched contact names
 - "recipient_emails": list of matched email addresses
 - "email_body": professional email body, 3-4 sentences, sign off as "D2SlideOS · SAP"
 
-IMPORTANT: If multiple reports partially match (e.g. same name but different versions), set ambiguous=true, leave report_url empty, and list all candidates.
+IMPORTANT rules:
+1. If user says "国泰人寿v1", match ONLY 国泰人寿v1 — do NOT treat it as ambiguous.
+2. report_url must be the exact string from the list (e.g. "Cavc5i0esdqj5s3q3dembpas122"), not the name.
+3. Only set ambiguous=true when user is vague (e.g. just "国泰" with no version).
 
 Return only valid JSON, no explanation."""
         }, {
