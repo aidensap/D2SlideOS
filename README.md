@@ -1,63 +1,76 @@
 # D2SlideOS
 
-> **SAP BI Report → AI Analysis → PPT, fully automated.**
+> **SAC Model Data → AI Analysis → PPT, fully automated.**
 
-**Login once. Enter your report URL once. D2SlideOS does the rest.**
+D2SlideOS connects directly to **SAP Analytics Cloud (SAC)** via OData API, pulls model data, runs AI-powered analysis, generates a professional PowerPoint report, and delivers it to recipients on a schedule — deployed on **SAP BTP Cloud Foundry**, no local setup required.
 
-D2SlideOS automatically captures your SAP Analytics Cloud stories on a schedule, runs **AI-powered analysis** on every chart, and delivers a **professional PowerPoint report straight to your manager's inbox** — no manual work, no repeated logins, no copy-pasting.
-
-- **One-time login** — authenticate once, and every future run uses your saved session automatically
-- **Any SAC story URL** — just paste the link; D2SlideOS handles the screenshot, the analysis, and the slides
-- **CSV / Excel upload** — upload a data file instead of a SAC URL; AI analyzes the table and generates slides
-- **GPT-4o Vision** — understands charts, trends, and KPIs the same way a human analyst would
-- **Natural language scheduling** — type "every Friday at 10:20" and D2SlideOS converts it to a cron schedule automatically
-- **Scheduled delivery** — set a schedule and your boss gets the report every Monday morning without you lifting a finger
-- **Multi-task** — manage multiple reports across different stories, each with its own schedule, language, AI model, and recipients
+**Live**: https://d2slideos.cfapps.eu12.hana.ondemand.com
 
 ---
 
 ## How It Works
 
 ```
-Scheduled trigger / Manual run
-        ↓
-Playwright (Edge) opens SAC report page
-(uses saved login cookies — no repeated login)
-        ↓
-Screenshot saved as PNG
-        ↓
-GPT-4o Vision API analyzes the chart
-        ↓
-python-pptx builds PPT (screenshot + AI insights)
-        ↓
+SAC OData Dataexport API
+         ↓
+   Pull model data (up to 5000 rows)
+         ↓
+AI column inference (ID_xxx → human-readable names)
+         ↓
+AI business analysis (insights + recommendations)
+         ↓
+AI chart generation (Plotly — heatmaps, maps, sankey, etc.)
+         ↓
+python-pptx builds PowerPoint deck
+         ↓
 (Optional) Resend API emails PPT to recipients
 ```
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **SAC Model Sync** | One-click sync of all SAC models into report library; AI generates friendly Chinese aliases |
+| **AI Column Inference** | Renames cryptic column names (e.g. `ID_MEASURE_NAME`) based on sample values |
+| **AI Chart Generation** | Describe your chart in natural language; AI writes and executes Plotly code |
+| **AI Business Analysis** | Structured findings + actionable recommendations from the data |
+| **Natural Language Tasks** | Type "每周一发国泰人寿报表给张经理" — AI parses into a structured task |
+| **Ambiguous Model Detection** | If multiple models match (e.g. "国泰人寿" → v1/v3/v4), warns user to choose manually |
+| **Cron Scheduling** | APScheduler with NL-to-cron conversion ("每周五上午9点" → `0 9 * * 5`) |
+| **Email Distribution** | PPT attached, AI-written email body, via Resend API |
+| **Run History** | Every run logged with downloadable PPT and AI insights |
+| **Address Book** | Save contacts (name + email) for quick recipient selection |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Browser UI                         │
-│   Task card manager · One-time SAC login                │
-│   Run history · Screenshot thumbnails · PPT download    │
-└────────────────────┬────────────────────────────────────┘
-                     │ HTTP
-┌────────────────────▼────────────────────────────────────┐
-│                  FastAPI Backend                        │
-│                                                         │
-│  /api/jobs  ──►  screenshot_rpa.py  ──►  PNG            │
-│                                            │            │
-│                                    agent.py (GPT Vision)│
-│                                            │            │
-│                                   slide_builder.py      │
-│                                            │            │
-│                                    output/*.pptx        │
-└─────────────────────────────────────────────────────────┘
-         │                              │
-   SAP AI Core                    SQLite (jobs +
-  (GPT / Claude)                   run history)
+┌──────────────────────────────────────────┐
+│             Browser UI (SPA)             │
+│  Task cards · Report library · History   │
+└──────────────────┬───────────────────────┘
+                   │ HTTP
+┌──────────────────▼───────────────────────┐
+│           FastAPI Backend                │
+│                                          │
+│  SACConnector → DataFrame                │
+│       ↓                                  │
+│  agent.py (SAP AI Core / GPT-4o)         │
+│    infer_column_names()                  │
+│    analyze_data()                        │
+│    generate_chart_code()  → PNG          │
+│       ↓                                  │
+│  slide_builder.py → .pptx                │
+│       ↓                                  │
+│  distributor.py → email                  │
+└──────────────────────────────────────────┘
+         │                    │
+   SAP AI Core           SQLite DB
+  (GPT-4o-mini)       (jobs + history +
+                        report aliases)
 ```
 
 ---
@@ -66,15 +79,16 @@ python-pptx builds PPT (screenshot + AI insights)
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | FastAPI + uvicorn |
-| Scheduler | APScheduler (AsyncIOScheduler, cron-based) |
-| Database | SQLite via SQLAlchemy (auto-migration on startup) |
-| RPA Screenshots | Playwright (Microsoft Edge, headless=False) |
-| AI Analysis | SAP AI Core (`generative-ai-hub-sdk`) |
-| Models | GPT-4o mini / GPT-4o / Claude 3.5 / Claude 4.6 |
-| Slide generation | python-pptx |
-| Email | Resend API (HTTPS, bypasses ISP SMTP blocking) |
+| Backend | Python 3.10 + FastAPI + uvicorn |
+| Scheduler | APScheduler (AsyncIOScheduler, cron) |
+| Database | SQLite via SQLAlchemy |
+| SAC Integration | OData Dataexport API (Client Credentials OAuth) |
+| AI | SAP AI Core — `generative-ai-hub-sdk` (GPT-4o / GPT-4o-mini) |
+| Charts | Plotly + Kaleido (PNG export) |
+| Slides | python-pptx |
+| Email | Resend API |
 | Frontend | Vanilla HTML/CSS/JS (zero dependencies) |
+| Deploy | SAP BTP Cloud Foundry (Python Buildpack) |
 
 ---
 
@@ -83,56 +97,72 @@ python-pptx builds PPT (screenshot + AI insights)
 ```
 D2SlideOS/
 ├── app/
-│   ├── main.py                  # FastAPI routes + APScheduler cron jobs
-│   ├── agent.py                 # AI: text analysis + GPT-4o Vision + NL→cron
-│   ├── config.py                # Env var loading
-│   ├── models.py                # SQLite: ReportJob + RunHistory (auto-migration)
+│   ├── main.py              # FastAPI routes + APScheduler
+│   ├── agent.py             # AI: analysis, chart gen, column inference, NL parsing
+│   ├── config.py            # Env var loading
+│   ├── models.py            # SQLite: ReportJob, RunHistory, Contact, ReportAlias
 │   └── tools/
-│       ├── screenshot_rpa.py    # Playwright RPA: login, screenshot, session check
-│       ├── sac_connector.py     # SAC OAuth Client Credentials connector
-│       ├── slide_builder.py     # PPT generation: screenshot + insights slides
-│       ├── bw_connector.py      # BW data source connector
-│       └── distributor.py       # Resend API email distribution
+│       ├── sac_connector.py # SAC OAuth + OData data pull
+│       ├── slide_builder.py # PPT generation
+│       ├── distributor.py   # Resend email
+│       ├── bw_connector.py  # BW data source (mock mode)
+│       └── screenshot_rpa.py# RPA (local only, disabled on BTP)
 ├── app/static/
-│   └── index.html               # Single-page frontend
-├── output/
-│   ├── screenshots/             # Screenshot PNGs (gitignored, auto-created)
-│   └── uploads/                 # Uploaded CSV/Excel files (gitignored)
-├── rpa_session.json             # Login cookies (gitignored, auto-generated)
-├── start_silent.vbs             # Silent background launcher (Windows)
-├── .env.example                 # Credential template
-└── requirements.txt
+│   └── index.html           # Single-page frontend
+├── manifest.yml             # BTP CF deployment config
+├── .env.example             # Credential template
+├── requirements.txt
+├── FUNCTION_SPEC.md         # Full feature specification
+└── MEETING_CHECKLIST.md     # Meeting prep checklist
 ```
 
 ---
 
-## Quick Start
+## Deployment (BTP Cloud Foundry)
 
-### Requirements
+```bash
+# Login
+cf login -a https://api.cf.eu12.hana.ondemand.com --sso
 
-- Windows machine with **Microsoft Edge** installed
-- Python 3.11+
-- Network access to SAP AI Core
+# Deploy
+cf push
 
-### Setup
+# Set environment variables (required after every push)
+cf set-env d2slideos AICORE_AUTH_URL "..."
+cf set-env d2slideos AICORE_CLIENT_ID "..."
+cf set-env d2slideos AICORE_CLIENT_SECRET "..."
+cf set-env d2slideos AICORE_BASE_URL "..."
+cf set-env d2slideos SAC_CLIENT_ID "..."
+cf set-env d2slideos SAC_CLIENT_SECRET "..."
+cf set-env d2slideos SAC_TOKEN_URL "..."
+cf set-env d2slideos SAC_BASE_URL "..."
+cf set-env d2slideos RESEND_API_KEY "..."
+cf set-env d2slideos EMAIL_FROM "D2SlideOS <noreply@yourdomain.com>"
+cf restage d2slideos
+```
+
+> **Note**: SQLite DB resets on every `cf push`. Re-run SAC model sync after each deploy.
+
+---
+
+## Local Development
 
 ```bash
 # 1. Clone
 git clone https://github.com/aidensap/D2SlideOS.git
 cd D2SlideOS
 
-# 2. Install dependencies
+# 2. Install
 pip install -r requirements.txt
-playwright install chromium
 
-# 3. Configure credentials
+# 3. Configure
 cp .env.example .env
-# Edit .env — fill in SAP AI Core credentials and Resend API key
+# Fill in .env with your credentials
 
 # 4. Run
-py -m uvicorn app.main:app --host 127.0.0.1 --port 8001
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8001
 
-# 5. Open browser
+# 5. Open
 # http://localhost:8001
 ```
 
@@ -142,109 +172,38 @@ py -m uvicorn app.main:app --host 127.0.0.1 --port 8001
 
 ```env
 # SAP AI Core
-AICORE_AUTH_URL=https://<your-subaccount>.authentication.<region>.hana.ondemand.com
+AICORE_AUTH_URL=https://<subaccount>.authentication.<region>.hana.ondemand.com
 AICORE_CLIENT_ID=sb-...
 AICORE_CLIENT_SECRET=...
 AICORE_BASE_URL=https://api.ai.<region>.ml.hana.ondemand.com/v2
 AICORE_RESOURCE_GROUP=default
-
-# Defaults (overridable per task from the UI)
 AI_MODEL=gpt-4o-mini
-CHART_LANG=zh
 
-# Email (Resend API)
+# SAP Analytics Cloud
+SAC_BASE_URL=https://<tenant>.analytics.sapcloud.cn
+SAC_TOKEN_URL=https://<tenant>.authentication.<region>.sapcloud.cn/oauth/token
+SAC_CLIENT_ID=...
+SAC_CLIENT_SECRET=...
+
+# Email
 RESEND_API_KEY=re_...
-EMAIL_FROM=D2SlideOS <onboarding@resend.dev>
+EMAIL_FROM=D2SlideOS <noreply@yourdomain.com>
 ```
 
-> **Never commit `.env` to git.** It contains real credentials.
+> **Never commit `.env` to git.**
 
 ---
 
-## Features
+## Known Limitations
 
-- **RPA auto-screenshot** — Playwright drives Edge to open SAC pages, waits for charts to render, removes popups, then screenshots
-- **One-time login** — Login once to save cookies; SAP SSO covers all report URLs under the same domain; session expiry is detected automatically
-- **CSV / Excel analysis** — Upload a spreadsheet; AI reads the table and generates slides without any browser automation
-- **GPT-4o Vision analysis** — Screenshot sent to GPT-4o for chart interpretation, returns structured insights in Chinese or English
-- **Natural language scheduling** — Type "every Friday at 10:20" or "每周五10:20"; GPT converts it to a cron expression
-- **Auto PPT generation** — Title slide + screenshot slide + AI insights slide, one-click download
-- **Per-task configuration** — Each task independently selects model, language, recipients, schedule, and custom email body
-- **Cron scheduling** — APScheduler runs tasks on schedule; schedules survive server restarts
-- **Email delivery** — Resend API sends PPT as attachment; email failure does not affect task status
-- **Inline task editing** — Expand any task card to edit URL, schedule, recipients, or email body without recreating the task
-- **Run history** — Every run logged with screenshot thumbnail, expandable AI insights, and PPT download link
+| Issue | Notes |
+|-------|-------|
+| Screenshot / RPA | Disabled on BTP; only available in local mode with Edge browser |
+| Email to @sap.com | Resend free tier cannot send to SAP corporate addresses |
+| User isolation | All users share the same SAC Client Credentials token |
+| DB persistence | SQLite resets on `cf push`; needs HANA Cloud for production use |
 
 ---
 
-## Deploying to Other Users
-
-### What each user needs
-
-| Requirement | Details |
-|-------------|---------|
-| Windows PC with Edge | Screenshot RPA requires a real browser; headless mode is blocked by SAP SSO |
-| Python 3.11+ | Install from python.org |
-| SAP AI Core credentials | Each user needs their own `.env` with valid AICORE_* values |
-| Resend API key | Free tier supports up to 3,000 emails/month |
-| Network access | Must reach SAP AI Core API and SAC system URL |
-
-### Per-user setup steps
-
-1. Copy the project folder to the user's machine
-2. Run `pip install -r requirements.txt` and `playwright install chromium`
-3. Fill in `.env` with the user's credentials
-4. Start the server: double-click `start_server.bat`
-5. Open `http://localhost:8001` in the browser
-6. Click **登录 SAC** once to save the SAP session
-
-### Auto-start on Windows login (optional)
-
-To have the server start automatically when the user logs in:
-
-1. Press `Win + R`, type `shell:startup`, press Enter
-2. Copy `start_silent.vbs` into the folder that opens
-3. The server will start silently in the background on every login
-
-### Known limitations
-
-- **Server must be running** for scheduled tasks to fire. If the machine is off or the server is stopped, missed schedules are not retried.
-- **Email sender domain** — `onboarding@resend.dev` (Resend test domain) is silently dropped by SAP enterprise mail servers. To send to corporate addresses, register a custom domain (e.g. `d2slideos.com`, ~$10/year) and verify it in Resend.
-- **No cloud deployment** — The screenshot pipeline requires a local Edge browser with an interactive SAP login session. Cloud hosting (Docker, Azure, etc.) is not supported for the screenshot source; CSV/Excel upload source works in any environment.
-- **SAC session expiry** — SAP sessions typically expire after 8–24 hours. When detected, the UI prompts the user to log in again.
-
----
-
-## API Reference
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/rpa/session-status` | Check login session status |
-| POST | `/api/rpa/login` | Open browser for interactive login, save cookies |
-| POST | `/api/rpa/logout` | Clear saved cookies |
-| GET | `/api/jobs` | List all tasks |
-| POST | `/api/jobs` | Create a task |
-| PATCH | `/api/jobs/{id}` | Update a task (name, URL, schedule, recipients, etc.) |
-| DELETE | `/api/jobs/{id}` | Delete a task |
-| POST | `/api/jobs/{id}/run` | Run a task immediately (async) |
-| GET | `/api/history` | List run history |
-| DELETE | `/api/history/{id}` | Delete a history entry |
-| GET | `/api/history/{id}/screenshot` | Get screenshot PNG |
-| GET | `/api/history/{id}/download` | Download generated `.pptx` |
-| POST | `/api/schedule/parse` | Convert natural language to cron expression |
-| GET | `/api/scheduler/jobs` | List active scheduled jobs and next run times |
-
----
-
-## SAP AI Core SDK Notes
-
-- Package: `generative-ai-hub-sdk` (not `sap-ai-sdk-gen`)
-- GPT models: `from gen_ai_hub.proxy.native.openai.clients import OpenAI`
-- Claude models: `from gen_ai_hub.proxy.langchain.openai import ChatOpenAI` (no native Anthropic module)
-- Vision (image analysis) only works with GPT-4o series; Claude via LangChain proxy cannot accept image input
-
----
-
-*Built by Aiden Yang · SAP STAR Intern · Powered by SAP AI Core*
-
-contact me @: aiden.yang@sap.com
+*Built by Aiden Yang · SAP CS&D GC · Powered by SAP AI Core & BTP*  
+Contact: aiden.yang@sap.com
