@@ -253,7 +253,8 @@ def generate_chart_code(df: pd.DataFrame, chart_prompt: str, output_path: str) -
     for col in df.columns:
         dtype = "text" if df[col].dtype == object else "number"
         sample = df[col].dropna().head(3).tolist()
-        columns_info.append({"name": col, "type": dtype, "sample": sample})
+        n_unique = int(df[col].nunique())
+        columns_info.append({"name": col, "type": dtype, "n_unique": n_unique, "sample": sample})
 
     prompt = f"""You are a Python data visualization expert. Write code to create a chart and save it as a PNG.
 
@@ -272,6 +273,12 @@ CRITICAL RULES:
 - DO NOT use plt.show() or fig.show()
 - DO NOT import pandas or load any data — df is already available
 - Output ONLY raw Python code, no explanation, no markdown fences
+
+CHART DESIGN RULES:
+- For category axis (x or y): pick a text column with n_unique >= 3. NEVER use a column with n_unique <= 2 as the category axis — that means it's a dimension/type label, not a real category.
+- If no text column has n_unique >= 3, group by the text column with the most unique values and aggregate numeric columns with sum().
+- For "Top N" requests: sort by the numeric column descending and take the top N ROWS, then plot. Do NOT just aggregate all rows into 2 bars.
+- If the data has columns that look like measure types (e.g. "Actual" vs "Forecast"), use them as color/legend grouping, not as the category axis.
 
 Example plotly structure:
 import plotly.express as px
