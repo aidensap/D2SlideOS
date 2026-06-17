@@ -128,12 +128,29 @@ def _render_chart(df, lang="en"):
             text_cols = df.select_dtypes(include="object").columns.tolist()
             num_cols = df.select_dtypes(include="number").columns.tolist()
             if text_cols and num_cols:
-                label_col, val_col = text_cols[0], num_cols[0]
-                plot_df = df.nlargest(10, val_col) if len(df) > 10 else df
-                ax.barh(plot_df[label_col].astype(str), plot_df[val_col], color="#38bdf8")
-                ax.set_title(f"{val_col} Top {len(plot_df)}", color="#e2e8f0", pad=10)
-                ax.invert_yaxis()
-                ax.tick_params(axis="y", labelsize=8, colors="#e2e8f0")
+                label_col = text_cols[0]
+                val_col = num_cols[0]
+                n_unique = df[label_col].nunique()
+
+                # Strip "public." prefix for cleaner labels
+                df = df.copy()
+                df[label_col] = df[label_col].astype(str).str.replace(r'^public\.', '', regex=True)
+
+                if n_unique <= 2:
+                    # Only 2 categories (e.g. Actual vs Forecast) — simple comparison bar
+                    grouped = df.groupby(label_col)[val_col].sum().reset_index()
+                    colors = ["#38bdf8", "#fb923c"]
+                    ax.bar(grouped[label_col].astype(str), grouped[val_col], color=colors[:len(grouped)])
+                    ax.set_title(f"{val_col} 对比", color="#e2e8f0", pad=10)
+                    ax.tick_params(axis="x", labelsize=10, colors="#e2e8f0")
+                    for i, v in enumerate(grouped[val_col]):
+                        ax.text(i, v * 0.95, f"{v:,.0f}", ha="center", va="top", color="#0f172a", fontsize=9, fontweight="bold")
+                else:
+                    plot_df = df.nlargest(10, val_col) if len(df) > 10 else df
+                    ax.barh(plot_df[label_col].astype(str), plot_df[val_col], color="#38bdf8")
+                    ax.set_title(f"{val_col} Top {len(plot_df)}", color="#e2e8f0", pad=10)
+                    ax.invert_yaxis()
+                    ax.tick_params(axis="y", labelsize=8, colors="#e2e8f0")
             else:
                 raise ValueError("cannot identify chart type")
 
