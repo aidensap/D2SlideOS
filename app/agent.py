@@ -21,6 +21,38 @@ def _get_client():
     return OpenAI()
 
 
+def _chat(model: str, messages: list, max_tokens: int = 1024):
+    """Unified chat call — supports both model names and config IDs (UUID format)."""
+    import re
+    _set_aicore_env()
+    is_uuid = bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', model, re.I))
+    if is_uuid:
+        from gen_ai_hub.proxy.core.proxy_clients import get_proxy_client
+        from gen_ai_hub.proxy.langchain.openai import ChatOpenAI
+        proxy = get_proxy_client('gen-ai-hub')
+        llm = ChatOpenAI(proxy_client=proxy, config_id=model, max_tokens=max_tokens)
+        from langchain_core.messages import HumanMessage, SystemMessage
+        lc_msgs = []
+        for m in messages:
+            if m['role'] == 'system':
+                lc_msgs.append(SystemMessage(content=m['content']))
+            else:
+                lc_msgs.append(HumanMessage(content=m['content']))
+        r = llm.invoke(lc_msgs)
+        class _Resp:
+            class _Choice:
+                class _Msg:
+                    pass
+                message = _Msg()
+            choices = [_Choice()]
+        _Resp.choices[0].message.content = r.content
+        return _Resp
+    else:
+        from gen_ai_hub.proxy.native.openai.clients import OpenAI
+        client = OpenAI()
+        return client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
+
+
 def analyze_data(df: pd.DataFrame, lang: str = "en") -> str:
     if lang == "zh":
         prompt = f"""你是一位资深业务分析师。以下是报表数据（CSV 格式）：
@@ -61,12 +93,7 @@ Recommendations:
 
 Follow the format above. Be concise and professional."""
 
-    client = _get_client()
-    response = client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1024,
-    )
+    response = _chat(AI_MODEL, [{"role": "user", "content": prompt}], max_tokens=1024)
     return response.choices[0].message.content
 
 
@@ -107,8 +134,7 @@ Recommendations:
 
 Follow the format above. Be concise and professional."""
 
-    client = _get_client()
-    response = client.chat.completions.create(
+    response = _chat(
         model=vision_model,
         messages=[{
             "role": "user",
@@ -158,23 +184,19 @@ def ask_vision_for_click(image_path: str, question: str):
 
 def natural_language_to_cron(text: str) -> dict:
     import json, re
-    client = _get_client()
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{
-            "role": "system",
-            "content": """You are a cron expression generator. Convert natural language schedule descriptions to cron expressions.
+    msgs = [{
+        "role": "system",
+        "content": """You are a cron expression generator. Convert natural language schedule descriptions to cron expressions.
 Return ONLY a JSON object with two fields:
 - "cron": the 5-field cron expression (minute hour day month weekday)
 - "description": a clear human-readable description of the schedule in the same language as the input
 
 Return only valid JSON, no explanation, no markdown."""
-        }, {
-            "role": "user",
-            "content": text
-        }],
-        max_tokens=120,
-    )
+    }, {
+        "role": "user",
+        "content": text
+    }]
+    response = _chat(AI_MODEL, msgs, max_tokens=120)
     raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
         raw = re.sub(r"^```[a-z]*\n?", "", raw)
@@ -188,7 +210,6 @@ Return only valid JSON, no explanation, no markdown."""
 def generate_model_aliases(models: list) -> list:
     """Given a list of {id, name} SAC models, return [{id, name, alias}] with AI-generated friendly aliases."""
     import json, re
-    client = _get_client()
     result = []
     for i in range(0, len(models), 20):
         batch = models[i:i+20]
@@ -200,9 +221,9 @@ Example output: ["国泰人寿v3", "HR课程汇总"]
 
 Input: {json.dumps(names, ensure_ascii=False)}"""
         try:
-            resp = client.chat.completions.create(
-                model=AI_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+            resp = _chat(
+                AI_MODEL,
+                [{"role": "user", "content": prompt}],
                 max_tokens=400,
             )
             raw = resp.choices[0].message.content.strip()
@@ -227,10 +248,9 @@ Return ONLY a JSON object mapping original column name to inferred name.
 If a column already has a clear name, keep it as-is.
 Samples: {json.dumps(col_samples, ensure_ascii=False)}"""
     try:
-        client = _get_client()
-        resp = client.chat.completions.create(
-            model=AI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
+        resp = _chat(
+            AI_MODEL,
+            [{"role": "user", "content": prompt}],
             max_tokens=300,
         )
         raw = resp.choices[0].message.content.strip()
@@ -246,8 +266,6 @@ Samples: {json.dumps(col_samples, ensure_ascii=False)}"""
 def generate_chart_code(df: pd.DataFrame, chart_prompt: str, output_path: str) -> str:
     """Ask AI to write plotly/matplotlib code. Expects df already renamed via infer_column_names."""
     import json, re
-
-    client = _get_client()
 
     columns_info = []
     for col in df.columns:
@@ -286,11 +304,7 @@ fig = px.bar(df, x='ColA', y='ColB', title='...')
 fig.update_layout(template='plotly_dark')
 fig.write_image('{output_path}', width=1000, height=600)"""
 
-    response = client.chat.completions.create(
-        model=AI_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=900,
-    )
+    response = _chat(AI_MODEL, [{"role": "user", "content": prompt}], max_tokens=900)
     code = response.choices[0].message.content.strip()
     if code.startswith("```"):
         code = re.sub(r"^```[a-z]*\n?", "", code)
@@ -306,14 +320,10 @@ fig.write_image('{output_path}', width=1000, height=600)"""
 
 def parse_task_from_text(text: str, contacts: list, report_aliases: list) -> dict:
     import json, re
-    client = _get_client()
-
     contacts_str = "\n".join(f"- {c['name']}: {c['email']}" for c in contacts) or "（无）"
     reports_str = "\n".join(f"- {r['name']}: {r['url']} (source={r['source']})" for r in report_aliases) or "（无）"
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{
+    response = _chat(AI_MODEL, [{
             "role": "system",
             "content": f"""You are a task parser. Extract structured fields from a natural language task description.
 
