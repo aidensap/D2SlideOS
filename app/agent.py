@@ -230,7 +230,8 @@ Input: {json.dumps(names, ensure_ascii=False)}"""
             for j, m in enumerate(batch):
                 alias = aliases[j] if j < len(aliases) else m["name"]
                 result.append({"id": m["id"], "name": m["name"], "alias": alias})
-        except Exception:
+        except Exception as e:
+            print(f"[alias_error] {e}", flush=True)
             result += [{"id": m["id"], "name": m["name"], "alias": m["name"]} for m in batch]
     return result
 
