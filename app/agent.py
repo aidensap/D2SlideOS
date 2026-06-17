@@ -31,7 +31,7 @@ def _chat(model: str, messages: list, max_tokens: int = 1024):
         import requests, types
         from gen_ai_hub.proxy.core.proxy_clients import get_proxy_client
         proxy = get_proxy_client('gen-ai-hub')
-        token = proxy.get_token()
+        token = proxy.get_ai_core_token()
         base = AICORE_BASE_URL.rstrip('/v2').rstrip('/')
         url = f"{base}/v2/inference/deployments/{model}/chat/completions"
         headers = {
