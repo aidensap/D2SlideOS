@@ -23,15 +23,15 @@ def _get_client():
 
 def _chat(model: str, messages: list, max_tokens: int = 1024):
     """Unified chat call — supports both model names and config IDs (UUID format)."""
-    import re
+    import re, types
     _set_aicore_env()
     is_uuid = bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', model, re.I))
     if is_uuid:
         from gen_ai_hub.proxy.core.proxy_clients import get_proxy_client
         from gen_ai_hub.proxy.langchain.openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage, SystemMessage
         proxy = get_proxy_client('gen-ai-hub')
         llm = ChatOpenAI(proxy_client=proxy, config_id=model, max_tokens=max_tokens)
-        from langchain_core.messages import HumanMessage, SystemMessage
         lc_msgs = []
         for m in messages:
             if m['role'] == 'system':
@@ -39,14 +39,10 @@ def _chat(model: str, messages: list, max_tokens: int = 1024):
             else:
                 lc_msgs.append(HumanMessage(content=m['content']))
         r = llm.invoke(lc_msgs)
-        class _Resp:
-            class _Choice:
-                class _Msg:
-                    pass
-                message = _Msg()
-            choices = [_Choice()]
-        _Resp.choices[0].message.content = r.content
-        return _Resp
+        # Wrap into OpenAI-compatible response shape
+        msg = types.SimpleNamespace(content=r.content)
+        choice = types.SimpleNamespace(message=msg)
+        return types.SimpleNamespace(choices=[choice])
     else:
         from gen_ai_hub.proxy.native.openai.clients import OpenAI
         client = OpenAI()
