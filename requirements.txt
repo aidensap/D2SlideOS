@@ -12,6 +12,3 @@ resend
 generative-ai-hub-sdk
 plotly
 kaleido
-langchain-aws
-langchain-openai
-langchain-community
