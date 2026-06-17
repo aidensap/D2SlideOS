@@ -287,15 +287,21 @@ def generate_slides(df, report_label, insights, lang="en", chart_prompt=""):
     first_line = next((l for l in insights.split("\n") if l.strip()), "")
     _add_title_slide(prs, report_label, first_line, lang)
 
-    if chart_prompt:
-        from app.agent import generate_chart_code
-        tmp_path = f"{OUTPUT_DIR}/_tmp_ai_chart.png"
-        result = generate_chart_code(df, chart_prompt, tmp_path)
-        if result and os.path.exists(result):
-            _add_chart_slide_from_image(prs, result, report_label)
-            os.remove(result)
-        else:
-            _add_chart_slide(prs, df, report_label, lang)
+    from app.agent import generate_chart_code
+    tmp_path = f"{OUTPUT_DIR}/_tmp_ai_chart.png"
+    effective_prompt = chart_prompt if chart_prompt else (
+        "根据数据特点自动选择最合适的图表类型（柱状图/折线图/饼图/热力图等）。"
+        "重点展示最有业务价值的维度对比或趋势，过滤掉全为0或无意义的列。"
+        "如果有时间/日期列优先画趋势图，有分类列优先按类别对比，数值列选最有代表性的一列。"
+        if lang == "zh" else
+        "Automatically choose the most suitable chart type (bar/line/pie/heatmap etc.) based on the data. "
+        "Focus on the most business-relevant dimension. Filter out columns that are all-zero or meaningless. "
+        "Prefer trend charts if there's a date column, category comparison if there's a category column."
+    )
+    result = generate_chart_code(df, effective_prompt, tmp_path)
+    if result and os.path.exists(result):
+        _add_chart_slide_from_image(prs, result, report_label)
+        os.remove(result)
     else:
         _add_chart_slide(prs, df, report_label, lang)
 
