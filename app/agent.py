@@ -22,34 +22,14 @@ def _get_client():
 
 
 def _chat(model: str, messages: list, max_tokens: int = 1024):
-    """Unified chat call — supports both model names and config IDs (UUID format)."""
-    import re
+    """Unified chat call — supports model names. GPT-5 uses max_completion_tokens."""
     _set_aicore_env()
-    is_uuid = bool(re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', model, re.I))
-    if is_uuid:
-        # Use direct HTTP call to AI Core with config_id as deployment target
-        import requests, types
-        from gen_ai_hub.proxy.core.proxy_clients import get_proxy_client
-        proxy = get_proxy_client('gen-ai-hub')
-        token = proxy.get_ai_core_token()
-        base = AICORE_BASE_URL.rstrip('/v2').rstrip('/')
-        url = f"{base}/v2/inference/deployments/{model}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "AI-Resource-Group": AICORE_RESOURCE_GROUP,
-        }
-        payload = {"messages": messages, "max_tokens": max_tokens}
-        r = requests.post(url, json=payload, headers=headers, timeout=60)
-        r.raise_for_status()
-        data = r.json()
-        content = data["choices"][0]["message"]["content"]
-        msg = types.SimpleNamespace(content=content)
-        choice = types.SimpleNamespace(message=msg)
-        return types.SimpleNamespace(choices=[choice])
+    from gen_ai_hub.proxy.native.openai.clients import OpenAI
+    client = OpenAI()
+    # GPT-5 requires max_completion_tokens instead of max_tokens
+    if model.startswith('gpt-5') or model.startswith('o1') or model.startswith('o3'):
+        return client.chat.completions.create(model=model, messages=messages, max_completion_tokens=max_tokens)
     else:
-        from gen_ai_hub.proxy.native.openai.clients import OpenAI
-        client = OpenAI()
         return client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
 
 
